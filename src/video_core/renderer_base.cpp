@@ -8,6 +8,8 @@
 #include "core/tracer/recorder.h"
 #include "video_core/debug_utils/debug_utils.h"
 #include "video_core/renderer_base.h"
+#include "core/leaf/leaf.h"
+#include "core/leaf/ui_probe.h"
 
 namespace VideoCore {
 
@@ -42,6 +44,9 @@ void RendererBase::UpdateCurrentFramebufferLayout(bool is_portrait_mode) {
 
 void RendererBase::EndFrame() {
     current_frame++;
+    if (Leaf::IsActive()) {
+        Leaf::UiProbe::EndFrame(system.Memory());
+    }
 
     system.perf_stats->EndSystemFrame();
 

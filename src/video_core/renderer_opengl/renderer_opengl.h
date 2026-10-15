@@ -72,7 +72,9 @@ private:
     void DrawTopScreen(const Layout::FramebufferLayout& layout,
                        const Common::Rectangle<u32>& top_screen);
     void DrawSingleScreen(const ScreenInfo& screen_info, float x, float y, float w, float h,
-                          Layout::DisplayOrientation orientation);
+                          Layout::DisplayOrientation orientation,
+                          const Common::Rectangle<float>* crop = nullptr);
+    void DrawBottomRegions(const Layout::FramebufferLayout& layout);
     void DrawSingleScreenStereo(const ScreenInfo& screen_info_l, const ScreenInfo& screen_info_r,
                                 float x, float y, float w, float h,
                                 Layout::DisplayOrientation orientation);
@@ -106,6 +108,7 @@ private:
     GLuint uniform_i_resolution;
     GLuint uniform_o_resolution;
     GLuint uniform_layer;
+    GLint uniform_leaf_params = -1;
 
     // Shader attribute input indices
     GLuint attrib_position;

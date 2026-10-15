@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="leaf_title">Leaf</string>
+    <string name="leaf_subtitle">Single-screen Animal Crossing: New Leaf. Uses your own game dump; nothing from the game is included in this app.</string>
+    <string name="leaf_setup_header">Setup</string>
+    <string name="leaf_save_folder">Save data folder</string>
+    <string name="leaf_save_folder_missing">Not selected — your town and settings are stored here</string>
+    <string name="leaf_rom">Game file</string>
+    <string name="leaf_rom_missing">Not selected — choose your decrypted .3ds / .cci / .cxi dump</string>
+    <string name="leaf_choose">Choose</string>
+    <string name="leaf_play">Play</string>
+    <string name="leaf_play_needs_setup">Choose a save folder and your game file first</string>
+    <string name="leaf_not_leaf_rom">That file is not Animal Crossing: New Leaf.</string>
+    <string name="leaf_rom_unreadable">That file could not be read.</string>
+    <string name="leaf_display_header">Display</string>
+    <string name="leaf_display_mode">Screen shape</string>
+    <string name="leaf_display_auto">Auto</string>
+    <string name="leaf_display_16_9">16:9</string>
+    <string name="leaf_display_4_3">4:3</string>
+    <string name="leaf_display_original">Original</string>
+    <string name="leaf_display_hint">The game renders a wider or narrower view to match. Changes apply the next time the game starts.</string>
+    <string name="leaf_resolution">Rendering resolution</string>
+    <string name="leaf_resolution_1x">Native</string>
+    <string name="leaf_resolution_2x">2×</string>
+    <string name="leaf_resolution_3x">3×</string>
+    <string name="leaf_resolution_hint">Native is the original 400×240. 2× is sharp on most handhelds; 3× (1200×720) looks best on 1080p screens but needs a fast GPU.</string>
+    <string name="leaf_controls_header">Controls</string>
+    <string name="leaf_touch_controls">On-screen controls</string>
+    <string name="leaf_touch_auto">Auto</string>
+    <string name="leaf_touch_on">Show</string>
+    <string name="leaf_touch_off">Hide</string>
+    <string name="leaf_touch_hint">Auto hides them while a controller is connected. When hidden, the screen only reacts to the game\'s menu elements.</string>
+    <string name="leaf_auto_map">Map controller buttons automatically</string>
+    <string name="leaf_nintendo_layout">Controller reports A on the right (Nintendo layout)</string>
+    <string name="leaf_detect_layout">Detect layout</string>
+    <string name="leaf_detect_layout_message">Press the face button on the RIGHT side of your controller (where A is on a 3DS).</string>
+    <string name="leaf_controller_hint">Right stick moves the cursor, R2 or R3 taps a menu element. L2 or L3 shows the touch screen for screens that are not remastered yet.</string>
+    <string name="leaf_storage_title">Allow file access</string>
+    <string name="leaf_storage_message">Leaf reads your game and keeps your town in the folder you chose. Android needs "All files access" for the fast storage path used by the emulator core. Turn it on for Leaf on the next screen.</string>
+    <string name="leaf_storage_grant">Open settings</string>
+    <string name="leaf_advanced">Advanced emulator settings</string>
+</resources>

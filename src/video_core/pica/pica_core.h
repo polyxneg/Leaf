@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <functional>
 #include "common/common_types.h"
 #include "core/hle/service/gsp/gsp_interrupt.h"
 #include "video_core/pica/dirty_regs.h"
@@ -116,6 +117,12 @@ public:
 
     void BindRasterizer(VideoCore::RasterizerInterface* rasterizer);
 
+    /// Leaf: runs once right before the next draw (used to key-clear the render target only
+    /// when the game really draws the bottom screen).
+    std::function<void()> leaf_before_draw;
+    PAddr leaf_before_draw_start = 0; ///< only a draw into [start, end) triggers it
+    PAddr leaf_before_draw_end = 0;
+
     void SetInterruptHandler(Service::GSP::InterruptHandler& signal_interrupt);
 
     void ProcessCmdList(PAddr list, u32 size, bool ignore_list);
@@ -140,6 +147,8 @@ private:
     void DrawImmediate();
 
     void DrawArrays(bool is_indexed);
+    void ProbeLeafDraw(int is_indexed = -1);
+    bool LeafDrawBounds(bool is_indexed, std::array<float, 4>& bounds);
 
     void LoadVertices(bool is_indexed);
 

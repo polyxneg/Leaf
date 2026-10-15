@@ -12,6 +12,8 @@
 #include "core/loader/loader.h"
 #include "video_core/debug_utils/debug_utils.h"
 #include "video_core/gpu.h"
+#include "core/leaf/leaf.h"
+#include "core/leaf/ui_probe.h"
 #include "video_core/gpu_debugger.h"
 #include "video_core/gpu_impl.h"
 #include "video_core/pica/pica_core.h"
@@ -412,6 +414,49 @@ void GPU::SubmitCmdList(u32 index) {
     config.trigger[index] = 0;
 }
 
+
+namespace {
+// Leaf: render target shared by both screens, and whether the game is between sending out the
+// top screen and sending out the bottom one (i.e. drawing the bottom screen).
+bool leaf_bottom_phase = false;
+PAddr leaf_rt_start = 0;
+PAddr leaf_rt_end = 0;
+Pica::PixelFormat leaf_rt_format = Pica::PixelFormat::RGBA8;
+
+/// Set once the key clear really ran, until the bottom screen has been sent out.
+bool leaf_key_cleared = false;
+
+/// Fills `fill`'s range with the key colour (magenta), or opaque black when `key` is false, in
+/// the render target's format.
+bool LeafKeyFill(Pica::MemoryFillConfig& fill, Pica::PixelFormat format, bool key = true) {
+    fill.fill_24bit.Assign(0);
+    fill.fill_32bit.Assign(0);
+    switch (format) {
+    case Pica::PixelFormat::RGBA8:
+        fill.fill_32bit.Assign(1);
+        fill.value_32bit = key ? 0xFF00FFFF : 0x000000FF; // stored as A,B,G,R bytes
+        return true;
+    case Pica::PixelFormat::RGB8:
+        fill.fill_24bit.Assign(1);
+        fill.value_24bit_r.Assign(key ? 0xFF : 0x00);
+        fill.value_24bit_g.Assign(0x00);
+        fill.value_24bit_b.Assign(key ? 0xFF : 0x00);
+        return true;
+    case Pica::PixelFormat::RGB565:
+        fill.value_16bit.Assign(key ? 0xF81F : 0x0000);
+        return true;
+    case Pica::PixelFormat::RGB5A1:
+        fill.value_16bit.Assign(key ? 0xF83F : 0x0001);
+        return true;
+    case Pica::PixelFormat::RGBA4:
+        fill.value_16bit.Assign(key ? 0xF0FF : 0x000F);
+        return true;
+    default:
+        return false;
+    }
+}
+} // namespace
+
 void GPU::MemoryFill(u32 index, u32 intr_index) {
     // Check if a memory fill was triggered.
     auto& config = impl->pica.regs.memory_fill_config[index];
@@ -419,9 +464,23 @@ void GPU::MemoryFill(u32 index, u32 intr_index) {
         return;
     }
 
+    // Leaf: the game sometimes clears the shared render target itself before drawing the bottom
+    // screen (black backgrounds in cutscenes and dialogs). Clear to the key colour instead so
+    // those backgrounds stay transparent on the main screen.
+    Pica::MemoryFillConfig leaf_fill = config;
+    const bool leaf_override =
+        Leaf::IsActive() && leaf_bottom_phase && config.GetStartAddress() < leaf_rt_end &&
+        config.GetEndAddress() > leaf_rt_start && LeafKeyFill(leaf_fill, leaf_rt_format);
+    const auto& fill = leaf_override ? leaf_fill : config;
+    if (leaf_override && impl->pica.leaf_before_draw) {
+        auto before = std::move(impl->pica.leaf_before_draw);
+        impl->pica.leaf_before_draw = nullptr;
+        before();
+    }
+
     // Perform memory fill.
-    if (!impl->rasterizer->AccelerateFill(config)) {
-        impl->sw_blitter->MemoryFill(config);
+    if (!impl->rasterizer->AccelerateFill(fill)) {
+        impl->sw_blitter->MemoryFill(fill);
     }
 
     // Treat fill as texture transfer from VRAM
@@ -443,6 +502,32 @@ void GPU::MemoryFill(u32 index, u32 intr_index) {
     // This was confirmed to happen on hardware even if "address_start" is zero.
     config.trigger.Assign(0);
     config.finished.Assign(1);
+}
+
+
+/// Leaf: ACNL renders the bottom screen into the render target it just used for the top screen
+/// without clearing it, because a full-screen wallpaper normally covers it. The remaster UI hides
+/// those wallpapers, so after each top-screen transfer the target is filled with the key colour
+/// (magenta), which the Leaf compositor turns transparent.
+/// The clear is deferred to the first draw after the transfer: while booting the game sometimes
+/// sends out the top screen again without drawing anything, and must then show the old image.
+void GPU::LeafClearForBottomScreen(const Pica::DisplayTransferConfig& transfer) {
+    const u32 bpp = Pica::BytesPerPixel(transfer.input_format);
+    const PAddr start = transfer.GetPhysicalInputAddress();
+    const PAddr end = start + transfer.input_width * transfer.input_height * bpp;
+    Pica::MemoryFillConfig fill{};
+    fill.address_start = start >> 3;
+    fill.address_end = end >> 3;
+    if (!LeafKeyFill(fill, transfer.input_format))
+        return;
+    impl->pica.leaf_before_draw_start = start;
+    impl->pica.leaf_before_draw_end = end;
+    impl->pica.leaf_before_draw = [this, fill] {
+        leaf_key_cleared = true;
+        if (!impl->rasterizer->AccelerateFill(fill)) {
+            impl->sw_blitter->MemoryFill(fill);
+        }
+    };
 }
 
 void GPU::MemoryTransfer() {
@@ -469,10 +554,45 @@ void GPU::MemoryTransfer() {
             DelayGenerator::GetCopyMode(config.IsInputVRAM(), config.IsOutputVRAM()), true,
             config.texture_copy.size);
     } else {
+        if (Leaf::IsActive()) {
+            Leaf::UiProbe::OnDisplayTransfer(config.GetPhysicalInputAddress(),
+                                             config.output_width, config.output_height);
+            // Bottom screen sent out without a single draw (a menu just closed): it is empty,
+            // so it must be all key colour, not the top-screen image still in the target.
+            if (config.output_height == 320 && impl->pica.leaf_before_draw) {
+                auto before = std::move(impl->pica.leaf_before_draw);
+                impl->pica.leaf_before_draw = nullptr;
+                before();
+            }
+        }
         if (right_eye_disabler->ShouldAllowDisplayTransfer(config.GetPhysicalInputAddress(),
                                                            config.input_height)) {
             if (!impl->rasterizer->AccelerateDisplayTransfer(config)) {
                 impl->sw_blitter->DisplayTransfer(config);
+            }
+        }
+        if (Leaf::IsActive()) {
+            if (config.output_height != 320) {
+                // Top screen sent out: the shared target now gets the bottom screen.
+                leaf_bottom_phase = true;
+                leaf_rt_start = config.GetPhysicalInputAddress();
+                leaf_rt_end = leaf_rt_start + config.input_width * config.input_height *
+                                                  Pica::BytesPerPixel(config.input_format);
+                leaf_rt_format = config.input_format;
+                LeafClearForBottomScreen(config);
+            } else {
+                leaf_bottom_phase = false;
+                impl->pica.leaf_before_draw = nullptr;
+                // Leave no key colour behind: when the game sends out the top screen again
+                // without drawing (loading, boot), it shows black like a cleared screen.
+                Pica::MemoryFillConfig black{};
+                black.address_start = leaf_rt_start >> 3;
+                black.address_end = leaf_rt_end >> 3;
+                if (leaf_key_cleared && LeafKeyFill(black, leaf_rt_format, false) &&
+                    !impl->rasterizer->AccelerateFill(black)) {
+                    impl->sw_blitter->MemoryFill(black);
+                }
+                leaf_key_cleared = false;
             }
         }
         delay = DelayGenerator::CalculateDelayNanoseconds(

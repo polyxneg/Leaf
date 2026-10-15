@@ -14,6 +14,8 @@
 #include "video_core/renderer_opengl/gl_texture_mailbox.h"
 #include "video_core/renderer_opengl/post_processing_opengl.h"
 #include "video_core/renderer_opengl/renderer_opengl.h"
+#include "core/leaf/leaf.h"
+#include "core/leaf/ui_scenes.h"
 #include "video_core/shader/generator/glsl_shader_gen.h"
 
 #include "video_core/host_shaders/opengl_present_anaglyph_frag.h"
@@ -456,6 +458,8 @@ void RendererOpenGL::ReloadShader(Settings::StereoRenderOption render_3d) {
     uniform_i_resolution = glGetUniformLocation(shader.handle, "i_resolution");
     uniform_o_resolution = glGetUniformLocation(shader.handle, "o_resolution");
     uniform_layer = glGetUniformLocation(shader.handle, "layer");
+    uniform_leaf_params = glGetUniformLocation(shader.handle, "leaf_params");
+    glUniform4f(uniform_leaf_params, 1.0f, 0.0f, 0.0f, 0.0f);
     attrib_position = glGetAttribLocation(shader.handle, "vert_position");
     attrib_tex_coord = glGetAttribLocation(shader.handle, "vert_tex_coord");
 }
@@ -533,8 +537,18 @@ void RendererOpenGL::ConfigureFramebufferTexture(TextureInfo& texture,
  * rotation.
  */
 void RendererOpenGL::DrawSingleScreen(const ScreenInfo& screen_info, float x, float y, float w,
-                                      float h, Layout::DisplayOrientation orientation) {
-    const auto& texcoords = screen_info.display_texcoords;
+                                      float h, Layout::DisplayOrientation orientation,
+                                      const Common::Rectangle<float>* crop) {
+    Common::Rectangle<float> texcoords = screen_info.display_texcoords;
+    if (crop) {
+        // Screen textures are stored rotated. With the landscape vertex setup below, screen X
+        // follows the texture's left->right axis and screen Y its bottom->top axis.
+        const auto full = texcoords;
+        texcoords.left = full.left + (full.right - full.left) * crop->left;
+        texcoords.right = full.left + (full.right - full.left) * crop->right;
+        texcoords.bottom = full.bottom + (full.top - full.bottom) * crop->top;
+        texcoords.top = full.bottom + (full.top - full.bottom) * crop->bottom;
+    }
 
     std::array<ScreenRectVertex, 4> vertices;
     switch (orientation) {
@@ -735,7 +749,33 @@ void RendererOpenGL::DrawScreens(const Layout::FramebufferLayout& layout, bool f
             DrawBottomScreen(layout, additional_screen);
         }
     }
+    DrawBottomRegions(layout);
     ResetSecondLayerOpacity();
+}
+
+void RendererOpenGL::DrawBottomRegions(const Layout::FramebufferLayout& layout) {
+    if (!Leaf::GetConfig().layout_enabled.load())
+        return;
+    const auto regions = Leaf::Ui::FrameRegions(layout);
+    if (regions.empty())
+        return;
+    state.blend.src_rgb_func = GL_SRC_ALPHA;
+    state.blend.dst_rgb_func = GL_ONE_MINUS_SRC_ALPHA;
+    state.blend.src_a_func = GL_ONE;
+    state.blend.dst_a_func = GL_ONE_MINUS_SRC_ALPHA;
+    glUniform1i(uniform_layer, 0);
+    for (const auto& region : regions) {
+        if (region.opacity <= 0.0f || region.dst.GetWidth() == 0 || region.dst.GetHeight() == 0)
+            continue;
+        glUniform4f(uniform_leaf_params, region.opacity, region.key_tolerance,
+                    region.key_softness, region.scrim);
+        DrawSingleScreen(screen_infos[2], static_cast<float>(region.dst.left),
+                         static_cast<float>(region.dst.top),
+                         static_cast<float>(region.dst.GetWidth()),
+                         static_cast<float>(region.dst.GetHeight()),
+                         Layout::DisplayOrientation::Landscape, &region.src);
+    }
+    glUniform4f(uniform_leaf_params, 1.0f, 0.0f, 0.0f, 0.0f);
 }
 
 void RendererOpenGL::ApplySecondLayerOpacity(float opacity) {
@@ -774,7 +814,7 @@ void RendererOpenGL::DrawTopScreen(const Layout::FramebufferLayout& layout,
     case Settings::StereoRenderOption::Off: {
         const int eye = static_cast<int>(Settings::values.mono_render_option.GetValue());
         DrawSingleScreen(screen_infos[eye], top_screen_left, top_screen_top, top_screen_width,
-                         top_screen_height, orientation);
+                         top_screen_height, orientation, Leaf::TopScreenCrop());
         break;
     }
     case Settings::StereoRenderOption::SideBySide: {

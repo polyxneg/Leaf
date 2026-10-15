@@ -1,9 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
+    <style name="Theme.Leaf.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/ic_launcher_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_leaf</item>
+        <item name="postSplashScreenTheme">@style/Theme.Citra.Main</item>
+    </style>
+
     <style name="Theme.Citra.Splash.Main" parent="Theme.SplashScreen">
-        <item name="windowSplashScreenBackground">@color/citra_surface_blue</item>
-        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_citra</item>
+        <item name="windowSplashScreenBackground">@color/ic_launcher_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_leaf</item>
         <item name="postSplashScreenTheme">@style/Theme.Citra.Blue</item>
     </style>
 

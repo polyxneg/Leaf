@@ -450,6 +450,16 @@ add_library(citra_core STATIC EXCLUDE_FROM_ALL
     hle/service/soc/soc_u.h
     hle/service/ssl/ssl_c.cpp
     hle/service/ssl/ssl_c.h
+    leaf/leaf.cpp
+    leaf/layout_patch.cpp
+    leaf/layout_patch.h
+    leaf/leaf.h
+    leaf/ui_patcher.cpp
+    leaf/ui_patcher.h
+    leaf/ui_probe.cpp
+    leaf/ui_probe.h
+    leaf/ui_scenes.cpp
+    leaf/ui_scenes.h
     hw/aes/arithmetic128.cpp
     hw/aes/arithmetic128.h
     hw/aes/ccm.cpp

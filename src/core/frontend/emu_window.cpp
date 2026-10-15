@@ -2,11 +2,15 @@
 // Licensed under GPLv2 or any later version
 // Refer to the misc/licenses/gplv2.txt file included.
 
+#include <algorithm>
 #include <cmath>
 #include <mutex>
+#include "common/logging/log.h"
 #include "common/settings.h"
 #include "core/3ds.h"
 #include "core/frontend/emu_window.h"
+#include "core/leaf/leaf.h"
+#include "core/leaf/ui_scenes.h"
 #include "core/frontend/input.h"
 
 namespace Frontend {
@@ -114,6 +118,19 @@ void EmuWindow::CreateTouchState() {
 }
 
 bool EmuWindow::TouchPressed(unsigned framebuffer_x, unsigned framebuffer_y) {
+    if (Leaf::GetConfig().layout_enabled.load() && !is_secondary) {
+        // Leaf layout: only the bottom-screen elements placed on the main screen take touches.
+        float region_x, region_y;
+        const auto regions =
+            Leaf::Ui::LastRegions(framebuffer_layout.width, framebuffer_layout.height);
+        const int region = Layout::MapRegionTouch(regions, framebuffer_x, framebuffer_y, region_x,
+                                                  region_y, active_touch_region);
+        if (region >= 0) {
+            active_touch_region = region;
+            TouchPressedNormalized(region_x, region_y);
+            return true;
+        }
+    }
     if (!framebuffer_layout.IsWithinTouchscreen(framebuffer_x, framebuffer_y))
         return false;
     Settings::StereoRenderOption render_3d_mode = get3DMode();
@@ -153,15 +170,28 @@ bool EmuWindow::TouchPressed(unsigned framebuffer_x, unsigned framebuffer_y) {
 }
 
 void EmuWindow::TouchReleased() {
+    active_touch_region = -1;
     std::scoped_lock guard{touch_state->mutex};
     touch_state->touch_pressed = false;
     touch_state->touch_x = 0;
     touch_state->touch_y = 0;
 }
 
+void EmuWindow::TouchPressedNormalized(float x, float y) {
+    std::scoped_lock guard{touch_state->mutex};
+    touch_state->touch_x = std::clamp(x, 0.0f, 1.0f);
+    touch_state->touch_y = std::clamp(y, 0.0f, 1.0f);
+    touch_state->touch_pressed = true;
+}
+
 void EmuWindow::TouchMoved(unsigned framebuffer_x, unsigned framebuffer_y) {
     if (!touch_state->touch_pressed)
         return;
+
+    if (active_touch_region >= 0) {
+        TouchPressed(framebuffer_x, framebuffer_y);
+        return;
+    }
 
     if (!framebuffer_layout.IsWithinTouchscreen(framebuffer_x, framebuffer_y))
         std::tie(framebuffer_x, framebuffer_y) = ClipToTouchScreen(framebuffer_x, framebuffer_y);
@@ -255,6 +285,9 @@ void EmuWindow::UpdateCurrentFramebufferLayout(u32 width, u32 height, bool is_po
         layout = Layout::AndroidSecondaryLayout(width, height);
     }
 #endif
+    if (Leaf::GetConfig().layout_enabled.load() && !is_secondary) {
+        layout = Layout::LeafFrameLayout(width, height);
+    }
 
     if (render_full_stereo) {
         layout.width = width * 2;

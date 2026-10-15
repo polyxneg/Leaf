@@ -20,6 +20,9 @@ import org.citra.citra_emu.features.settings.model.BooleanSetting
 import org.citra.citra_emu.features.settings.model.IntSetting
 import org.citra.citra_emu.utils.Log
 
+/** Leaf never renders the 3DS bottom screen to a second display. */
+private const val LEAF_SINGLE_SCREEN = true
+
 class SecondaryDisplay(val context: Context) : DisplayManager.DisplayListener {
     private var pres: SecondaryDisplayPresentation? = null
     private val displayManager = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
@@ -82,6 +85,12 @@ class SecondaryDisplay(val context: Context) : DisplayManager.DisplayListener {
     fun updateDisplay() {
         // return early if the parent context is dead or dying
         if (context is android.app.Activity && (context.isFinishing || context.isDestroyed)) {
+            return
+        }
+        // Leaf is single-screen only: never present a second screen (not even on the hidden
+        // virtual display), which also saves a full extra render pass every frame.
+        if (LEAF_SINGLE_SCREEN) {
+            releasePresentation()
             return
         }
 

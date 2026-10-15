@@ -2,12 +2,14 @@
 // Licensed under GPLv2 or any later version
 // Refer to the misc/licenses/gplv2.txt file included.
 
+#include <algorithm>
 #include <cmath>
 
 #include "common/assert.h"
 #include "common/settings.h"
 #include "core/3ds.h"
 #include "core/frontend/framebuffer_layout.h"
+#include "core/leaf/leaf.h"
 
 namespace Layout {
 
@@ -22,6 +24,31 @@ u32 FramebufferLayout::GetScalingRatio() const {
     } else {
         return static_cast<u32>(((top_screen.GetWidth() - 1) / Core::kScreenTopHeight) + 1);
     }
+}
+
+int MapRegionTouch(const std::vector<ScreenRegion>& regions, unsigned framebuffer_x,
+                   unsigned framebuffer_y, float& out_x, float& out_y, int only_region) {
+    for (int i = static_cast<int>(regions.size()) - 1; i >= 0; i--) {
+        const auto& region = regions[i];
+        if (!region.touchable || (only_region >= 0 && i != only_region))
+            continue;
+        const auto& dst = region.dst;
+        const bool inside = framebuffer_x >= dst.left && framebuffer_x < dst.right &&
+                            framebuffer_y >= dst.top && framebuffer_y < dst.bottom;
+        // A drag that started on a region keeps tracking it, clamped to its edges.
+        if (!inside && only_region < 0)
+            continue;
+        const float fx = std::clamp(
+            (static_cast<float>(framebuffer_x) - dst.left) / std::max(1u, dst.GetWidth()), 0.0f,
+            1.0f);
+        const float fy = std::clamp(
+            (static_cast<float>(framebuffer_y) - dst.top) / std::max(1u, dst.GetHeight()), 0.0f,
+            1.0f);
+        out_x = region.src.left + fx * (region.src.right - region.src.left);
+        out_y = region.src.top + fy * (region.src.bottom - region.src.top);
+        return i;
+    }
+    return -1;
 }
 
 bool FramebufferLayout::IsWithinTouchscreen(unsigned framebuffer_x, unsigned framebuffer_y) const {
@@ -751,6 +778,40 @@ std::pair<unsigned, unsigned> GetMinimumSizeFromLayout(Settings::LayoutOption la
     } else {
         return std::make_pair(min_width, min_height);
     }
+}
+
+FramebufferLayout LeafFrameLayout(u32 width, u32 height) {
+    const auto& config = Leaf::GetConfig();
+    FramebufferLayout res{width, height, true, false, {}, {}, true};
+
+    const auto mode = static_cast<Leaf::DisplayMode>(config.display_mode.load());
+    const Common::Rectangle<u32> window{0, 0, width, height};
+    Common::Rectangle<u32> top = MaxRectangle(window, Leaf::DisplayAspect(mode, width, height));
+    res.top_screen = top.TranslateX((width - top.GetWidth()) / 2)
+                         .TranslateY((height - top.GetHeight()) / 2);
+
+    if (config.panel_visible.load()) {
+        const float scale = std::clamp(config.panel_scale.load(), 0.3f, 1.0f);
+        const Common::Rectangle<u32> area{0, 0, width,
+                                          static_cast<u32>(std::round(height * scale))};
+        Common::Rectangle<u32> bottom = MaxRectangle(area, BOT_SCREEN_ASPECT_RATIO);
+        const u32 margin = (height - bottom.GetHeight()) / 2;
+        u32 x = (width - bottom.GetWidth()) / 2;
+        switch (static_cast<Leaf::PanelAnchor>(config.panel_anchor.load())) {
+        case Leaf::PanelAnchor::Right:
+            x = width - bottom.GetWidth() - std::min(margin, width - bottom.GetWidth());
+            break;
+        case Leaf::PanelAnchor::Left:
+            x = std::min(margin, width - bottom.GetWidth());
+            break;
+        case Leaf::PanelAnchor::Center:
+            break;
+        }
+        res.bottom_screen = bottom.TranslateX(x).TranslateY(margin);
+        res.bottom_screen_enabled = true;
+        res.bottom_opacity = std::clamp(config.panel_opacity.load(), 0.2f, 1.0f);
+    }
+    return res;
 }
 
 float FramebufferLayout::GetAspectRatioValue(Settings::AspectRatio aspect_ratio) {

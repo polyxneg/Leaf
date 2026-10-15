@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include <vector>
+
 #include "common/math_util.h"
 #include "common/settings.h"
 
@@ -22,6 +24,18 @@ struct CardboardSettings {
     u32 top_screen_right_eye;
     u32 bottom_screen_right_eye;
     s32 user_x_shift;
+};
+
+/// A crop of the bottom (touch) screen drawn at an arbitrary place in the window. Used by the
+/// Leaf layout to place individual bottom-screen UI elements on the main screen.
+struct ScreenRegion {
+    Common::Rectangle<float> src; ///< normalized landscape bottom-screen coordinates (0..1)
+    Common::Rectangle<u32> dst;   ///< window pixels
+    float opacity = 1.0f;
+    bool touchable = true;
+    float key_tolerance = 0.0f; ///< >0 makes pixels near the key colour (magenta) transparent
+    float key_softness = 0.0f;
+    float scrim = 0.0f; ///< keyed pixels darken what is behind instead of being transparent
 };
 
 /// Describes the layout of the window framebuffer (size and top/bottom screen positions)
@@ -61,6 +75,14 @@ struct FramebufferLayout {
 
     Settings::StereoRenderOption render_3d_mode = Settings::values.render_3d.GetValue();
 };
+
+/**
+ * Maps a window position inside a touchable region to normalized bottom-screen coordinates.
+ * When only_region >= 0 the position is clamped into that region (drag continuation).
+ * Returns the region index, or -1 when the position is not on a touchable region.
+ */
+int MapRegionTouch(const std::vector<ScreenRegion>& regions, unsigned framebuffer_x,
+                   unsigned framebuffer_y, float& out_x, float& out_y, int only_region = -1);
 
 /**
  * Method to create a rotated copy of a framebuffer layout, used to rotate to upright mode
@@ -163,6 +185,12 @@ FramebufferLayout AndroidSecondaryLayout(u32 width, u32 height);
  */
 FramebufferLayout CustomFrameLayout(u32 width, u32 height, bool is_swapped,
                                     bool is_portrait_mode = false);
+
+/**
+ * Leaf single-screen layout: the top screen fills the window at the configured aspect ratio and
+ * the bottom screen is only enabled while the touch panel is shown, floating above it.
+ */
+FramebufferLayout LeafFrameLayout(u32 width, u32 height);
 
 /**
  * Convenience method to get frame layout by resolution scale

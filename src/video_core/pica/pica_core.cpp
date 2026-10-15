@@ -11,6 +11,9 @@
 #include "core/memory.h"
 #include "video_core/debug_utils/debug_utils.h"
 #include "video_core/pica/pica_core.h"
+#include "core/leaf/leaf.h"
+#include "core/leaf/ui_probe.h"
+#include "video_core/pica/output_vertex.h"
 #include "video_core/pica/vertex_loader.h"
 #include "video_core/rasterizer_interface.h"
 #include "video_core/shader/shader.h"
@@ -1036,6 +1039,7 @@ void PicaCore::DrawImmediate() {
     geometry_pipeline.SubmitVertex(output);
 
     // Flush the immediate triangle.
+    ProbeLeafDraw();
     rasterizer->DrawTriangles();
     immediate.current_attribute = 0;
 
@@ -1044,8 +1048,78 @@ void PicaCore::DrawImmediate() {
     }
 }
 
+/// Leaf: runs the vertex shader on the CPU for a small draw to find where it lands in the render
+/// target (used to place bottom-screen UI by its real size, e.g. variable-width bubbles).
+bool PicaCore::LeafDrawBounds(bool is_indexed, std::array<float, 4>& bounds) {
+    const auto& pipeline = regs.internal.pipeline;
+    if (pipeline.use_gs == PipelineRegs::UseGS::Yes || pipeline.num_vertices == 0 ||
+        pipeline.num_vertices > 64)
+        return false;
+    const PAddr base_address = pipeline.vertex_attributes.GetPhysicalBaseAddress();
+    const auto& index_info = pipeline.index_array;
+    const u8* index_8 = memory.GetPhysicalPointer(base_address + index_info.offset);
+    if (!index_8)
+        return false;
+    const u16* index_16 = reinterpret_cast<const u16*>(index_8);
+    const bool index_u16 = index_info.format != 0;
+    const auto loader = VertexLoader(memory, pipeline);
+
+    const auto& raster = regs.internal.rasterizer;
+    const float half_w = f24::FromRaw(raster.viewport_size_x).ToFloat32();
+    const float half_h = f24::FromRaw(raster.viewport_size_y).ToFloat32();
+    const float corner_x = static_cast<float>(raster.viewport_corner.x);
+    const float corner_y = static_cast<float>(raster.viewport_corner.y);
+
+    ShaderUnit unit;
+    AttributeBuffer output{};
+    shader_engine->SetupBatch(vs_setup, regs.internal.vs.main_offset);
+    bounds = {1e9f, 1e9f, -1e9f, -1e9f};
+    for (u32 index = 0; index < pipeline.num_vertices; ++index) {
+        const u32 vertex = is_indexed ? (index_u16 ? index_16[index] : index_8[index])
+                                      : (index + pipeline.vertex_offset);
+        AttributeBuffer input;
+        loader.LoadVertex(base_address, index, vertex, input, input_default_attributes);
+        unit.LoadInput(regs.internal.vs, input);
+        shader_engine->Run(vs_setup, unit);
+        unit.WriteOutput(regs.internal.vs, output);
+        const OutputVertex v(raster, output);
+        const float w = v.pos.w.ToFloat32();
+        if (!(w > 0.0f))
+            continue;
+        const float x = (v.pos.x.ToFloat32() / w + 1.0f) * half_w + corner_x;
+        const float y = (v.pos.y.ToFloat32() / w + 1.0f) * half_h + corner_y;
+        bounds[0] = std::min(bounds[0], x);
+        bounds[1] = std::min(bounds[1], y);
+        bounds[2] = std::max(bounds[2], x);
+        bounds[3] = std::max(bounds[3], y);
+    }
+    return bounds[0] <= bounds[2];
+}
+
+void PicaCore::ProbeLeafDraw(int is_indexed) {
+    if (!Leaf::IsActive())
+        return;
+    const PAddr target = regs.internal.framebuffer.framebuffer.GetColorBufferPhysicalAddress();
+    if (leaf_before_draw && target >= leaf_before_draw_start && target < leaf_before_draw_end) {
+        auto before = std::move(leaf_before_draw);
+        leaf_before_draw = nullptr;
+        before();
+    }
+    const auto& texturing = regs.internal.texturing;
+    const bool textured = texturing.main_config.texture0_enable.Value() != 0;
+    std::array<float, 4> bounds;
+    const bool measured = textured && is_indexed >= 0 && Leaf::UiProbe::WantBounds() &&
+                          LeafDrawBounds(is_indexed != 0, bounds);
+    Leaf::UiProbe::OnDraw(regs.internal.framebuffer.framebuffer.GetColorBufferPhysicalAddress(),
+                          textured, texturing.texture0.GetPhysicalAddress(),
+                          texturing.texture0.width, texturing.texture0.height,
+                          static_cast<u32>(texturing.texture0_format.Value()),
+                          measured ? &bounds : nullptr);
+}
+
 void PicaCore::DrawArrays(bool is_indexed) {
     MICROPROFILE_SCOPE(GPU_Drawing);
+    ProbeLeafDraw(is_indexed ? 1 : 0);
 
     // Track vertex in the debug recorder.
     if (debug_context) {

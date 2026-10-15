@@ -203,6 +203,13 @@ public:
     void TouchReleased();
 
     /**
+     * Presses the touchscreen at normalized landscape coordinates (0..1), independent of where
+     * (or whether) the bottom screen is currently drawn. Used by the Leaf panel shortcuts and
+     * the controller-driven cursor.
+     */
+    void TouchPressedNormalized(float x, float y);
+
+    /**
      * Signal that a touch movement event has occurred (e.g. mouse was moved over the emu window)
      * @param framebuffer_x Framebuffer x-coordinate
      * @param framebuffer_y Framebuffer y-coordinate
@@ -342,6 +349,9 @@ private:
     WindowConfig active_config{}; ///< Internal active configuration
 
     std::shared_ptr<TouchState> touch_state;
+
+    /// Index of the layout's bottom-screen region that owns the current touch, or -1.
+    int active_touch_region = -1;
 
     /**
      * Clip the provided coordinates to be inside the touchscreen area.

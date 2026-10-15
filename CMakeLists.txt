@@ -118,6 +118,7 @@ foreach(_opt IN LISTS _LIBRETRO_INCOMPATIBLE_OPTIONS)
 endforeach()
 
 option(ENABLE_SDL2 "Enable using SDL2" ON)
+option(ENABLE_LEAF_HARNESS "Build the headless Leaf development harness" OFF)
 option(USE_SYSTEM_FAAD "Use the system faad2 lib (instead of the bundled one)" OFF)
 option(USE_SYSTEM_SDL2 "Use the system SDL2 lib (instead of the bundled one)" OFF)
 option(USE_SYSTEM_SPIRV_TOOLS "Use the system SPIRV-Tools lib (instead of the bundled one)" OFF)

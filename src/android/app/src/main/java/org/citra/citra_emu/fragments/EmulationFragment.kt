@@ -11,11 +11,11 @@ import android.content.DialogInterface
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.SharedPreferences
-import android.content.res.Configuration
 import android.net.Uri
 import android.os.BatteryManager
 import android.os.Build
 import android.os.Bundle
+import android.hardware.input.InputManager
 import android.os.Handler
 import android.os.Looper
 import android.os.ParcelFileDescriptor
@@ -81,6 +81,7 @@ import org.citra.citra_emu.utils.DirectoryInitialization.DirectoryInitialization
 import org.citra.citra_emu.utils.EmulationLifecycleUtil
 import org.citra.citra_emu.utils.EmulationMenuSettings
 import org.citra.citra_emu.utils.GameHelper
+import org.citra.citra_emu.leaf.LeafSession
 import org.citra.citra_emu.utils.GameIconUtils
 import org.citra.citra_emu.utils.Log
 import org.citra.citra_emu.utils.TurboHelper
@@ -210,14 +211,16 @@ class EmulationFragment :
         savedInstanceState: Bundle?
     ): View {
         _binding = FragmentEmulationBinding.inflate(inflater)
-        binding.inGameMenu.menu.findItem(R.id.menu_secondary_screen_layout).isVisible =
-            emulationActivity.secondaryDisplayManager.availableDisplays.isNotEmpty()
-        binding.inGameMenu.menu.findItem(R.id.menu_landscape_screen_layout).isVisible =
-            CitraApplication.appContext.resources.configuration.orientation !=
-            Configuration.ORIENTATION_PORTRAIT
-        binding.inGameMenu.menu.findItem(R.id.menu_portrait_screen_layout).isVisible =
-            CitraApplication.appContext.resources.configuration.orientation ==
-            Configuration.ORIENTATION_PORTRAIT
+        // Leaf is single-screen: none of the two-screen arrangement options apply.
+        for (id in listOf(
+            R.id.menu_secondary_screen_layout,
+            R.id.menu_landscape_screen_layout,
+            R.id.menu_portrait_screen_layout,
+            R.id.menu_swap_screens,
+            R.id.menu_rotate_upright
+        )) {
+            binding.inGameMenu.menu.findItem(id).isVisible = false
+        }
         return binding.root
     }
 
@@ -230,6 +233,11 @@ class EmulationFragment :
         }
 
         binding.surfaceEmulation.holder.addCallback(this)
+        binding.surfaceInputOverlay.isFocusable = false
+        binding.surfaceInputOverlay.isFocusableInTouchMode = false
+        // Leaf: the cursor view holds focus permanently. When a plain view already has focus,
+        // leaving Android's touch mode does not swallow the first D-pad press after a touch.
+        binding.leafCursor.requestFocus()
         binding.doneControlConfig.setOnClickListener {
             binding.doneControlConfig.visibility = View.GONE
             binding.surfaceInputOverlay.setIsInEditMode(false)
@@ -264,10 +272,13 @@ class EmulationFragment :
             }
 
             override fun onDrawerClosed(drawerView: View) {
+                binding.leafCursor.requestFocus()
                 binding.drawerLayout.setDrawerLockMode(EmulationMenuSettings.drawerLockMode)
                 binding.surfaceInputOverlay.isClickable = true
-                binding.surfaceInputOverlay.isFocusable = true
-                binding.surfaceInputOverlay.isFocusableInTouchMode = true
+                // Leaf: never focusable, or the first D-pad press after a touch is spent on
+                // moving focus (Android "touch mode") instead of reaching the game.
+                binding.surfaceInputOverlay.isFocusable = false
+                binding.surfaceInputOverlay.isFocusableInTouchMode = false
             }
 
             override fun onDrawerStateChanged(newState: Int) {
@@ -448,6 +459,7 @@ class EmulationFragment :
                         binding.drawerLayout.close()
                     } else {
                         binding.drawerLayout.open()
+                        binding.inGameMenu.requestFocus()
                     }
                 }
             }
@@ -528,8 +540,23 @@ class EmulationFragment :
         }
     }
 
+    private val leafDeviceListener = object : InputManager.InputDeviceListener {
+        override fun onInputDeviceAdded(deviceId: Int) = onLeafDevicesChanged()
+        override fun onInputDeviceRemoved(deviceId: Int) = onLeafDevicesChanged()
+        override fun onInputDeviceChanged(deviceId: Int) = onLeafDevicesChanged()
+    }
+
+    private fun onLeafDevicesChanged() {
+        if (_binding == null) return
+        LeafSession.refreshInputMode(requireContext())
+        binding.surfaceInputOverlay.refreshControls()
+    }
+
     override fun onResume() {
         super.onResume()
+        (requireContext().getSystemService(Context.INPUT_SERVICE) as InputManager)
+            .registerInputDeviceListener(leafDeviceListener, null)
+        onLeafDevicesChanged()
         Choreographer.getInstance().postFrameCallback(this)
         if (NativeLibrary.isRunning()) {
             emulationState.unpause()
@@ -557,6 +584,8 @@ class EmulationFragment :
     }
 
     override fun onPause() {
+        (requireContext().getSystemService(Context.INPUT_SERVICE) as InputManager)
+            .unregisterInputDeviceListener(leafDeviceListener)
         if (NativeLibrary.isRunning()) {
             emulationState.pause()
         }

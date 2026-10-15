@@ -12,6 +12,8 @@
 #include "video_core/gpu.h"
 #include "video_core/pica/pica_core.h"
 #include "video_core/renderer_vulkan/renderer_vulkan.h"
+#include "core/leaf/leaf.h"
+#include "core/leaf/ui_scenes.h"
 #include "video_core/renderer_vulkan/vk_memory_util.h"
 #include "video_core/renderer_vulkan/vk_shader_util.h"
 
@@ -406,11 +408,12 @@ void RendererVulkan::BuildPipelines() {
 
     const vk::PipelineColorBlendAttachmentState colorblend_attachment = {
         .blendEnable = true,
-        .srcColorBlendFactor = vk::BlendFactor::eConstantAlpha,
-        .dstColorBlendFactor = vk::BlendFactor::eOneMinusConstantAlpha,
+        // The present shaders output alpha = key alpha * layer opacity (see leaf_params).
+        .srcColorBlendFactor = vk::BlendFactor::eSrcAlpha,
+        .dstColorBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha,
         .colorBlendOp = vk::BlendOp::eAdd,
-        .srcAlphaBlendFactor = vk::BlendFactor::eConstantAlpha,
-        .dstAlphaBlendFactor = vk::BlendFactor::eOneMinusConstantAlpha,
+        .srcAlphaBlendFactor = vk::BlendFactor::eOne,
+        .dstAlphaBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha,
         .alphaBlendOp = vk::BlendOp::eAdd,
         .colorWriteMask = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
                           vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA,
@@ -745,9 +748,19 @@ void RendererVulkan::ReloadPipeline(Settings::StereoRenderOption render_3d) {
 }
 
 void RendererVulkan::DrawSingleScreen(u32 screen_id, float x, float y, float w, float h,
-                                      Layout::DisplayOrientation orientation) {
+                                      Layout::DisplayOrientation orientation,
+                                      const Common::Rectangle<float>* crop) {
     const ScreenInfo& screen_info = screen_infos[screen_id];
-    const auto& texcoords = screen_info.texcoords;
+    Common::Rectangle<float> texcoords = screen_info.texcoords;
+    if (crop) {
+        // Screen textures are stored rotated. With the landscape vertex setup below, screen X
+        // follows the texture's left->right axis and screen Y its bottom->top axis.
+        const auto full = texcoords;
+        texcoords.left = full.left + (full.right - full.left) * crop->left;
+        texcoords.right = full.left + (full.right - full.left) * crop->right;
+        texcoords.bottom = full.bottom + (full.top - full.bottom) * crop->top;
+        texcoords.top = full.bottom + (full.top - full.bottom) * crop->bottom;
+    }
 
     std::array<ScreenRectVertex, 4> vertices;
     switch (orientation) {
@@ -889,6 +902,7 @@ void RendererVulkan::DrawSingleScreenStereo(u32 screen_id_l, u32 screen_id_r, fl
 }
 
 void RendererVulkan::ApplySecondLayerOpacity(float alpha) {
+    draw_info.leaf_params.x = alpha;
     scheduler.Record([alpha](vk::CommandBuffer cmdbuf) {
         const std::array<float, 4> blend_constants = {0.0f, 0.0f, 0.0f, alpha};
         cmdbuf.setBlendConstants(blend_constants.data());
@@ -914,7 +928,7 @@ void RendererVulkan::DrawTopScreen(const Layout::FramebufferLayout& layout,
     case Settings::StereoRenderOption::Off: {
         const int eye = static_cast<int>(Settings::values.mono_render_option.GetValue());
         DrawSingleScreen(eye, top_screen_left, top_screen_top, top_screen_width, top_screen_height,
-                         orientation);
+                         orientation, Leaf::TopScreenCrop());
         break;
     }
     case Settings::StereoRenderOption::SideBySide: {
@@ -1011,6 +1025,28 @@ void RendererVulkan::DrawBottomScreen(const Layout::FramebufferLayout& layout,
     }
 }
 
+void RendererVulkan::DrawBottomRegions(const Layout::FramebufferLayout& layout) {
+    if (!Leaf::GetConfig().layout_enabled.load())
+        return;
+    for (const auto& region : Leaf::Ui::FrameRegions(layout)) {
+        if (region.opacity <= 0.0f || region.dst.GetWidth() == 0 || region.dst.GetHeight() == 0)
+            continue;
+        draw_info.layer = 0;
+        ApplySecondLayerOpacity(region.opacity);
+        draw_info.leaf_params.y = region.key_tolerance;
+        draw_info.leaf_params.z = region.key_softness;
+        draw_info.leaf_params.w = region.scrim;
+        DrawSingleScreen(2, static_cast<float>(region.dst.left),
+                         static_cast<float>(region.dst.top),
+                         static_cast<float>(region.dst.GetWidth()),
+                         static_cast<float>(region.dst.GetHeight()),
+                         Layout::DisplayOrientation::Landscape, &region.src);
+    }
+    draw_info.leaf_params.y = 0.0f;
+    draw_info.leaf_params.z = 0.0f;
+    draw_info.leaf_params.w = 0.0f;
+}
+
 void RendererVulkan::DrawScreens(Frame* frame, const Layout::FramebufferLayout& layout,
                                  bool flipped) {
     if (settings.bg_color_update_requested.exchange(false)) {
@@ -1057,6 +1093,9 @@ void RendererVulkan::DrawScreens(Frame* frame, const Layout::FramebufferLayout& 
             DrawBottomScreen(layout, additional_screen);
         }
     }
+
+    DrawBottomRegions(layout);
+    ApplySecondLayerOpacity(1.0f);
 
     DrawCursor(layout);
 

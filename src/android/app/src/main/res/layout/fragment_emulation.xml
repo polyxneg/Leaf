@@ -30,9 +30,19 @@
             android:layout_height="match_parent"
             android:layout_gravity="center"
             android:defaultFocusHighlightEnabled="false"
-            android:focusable="true"
-            android:focusableInTouchMode="true"
+            android:focusable="false"
+            android:focusableInTouchMode="false"
             android:visibility="invisible" />
+
+        <!-- Leaf: gamepad cursor for the bottom-screen elements placed on the main screen -->
+        <org.citra.citra_emu.leaf.LeafCursorView
+            android:id="@+id/leaf_cursor"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:clickable="false"
+            android:defaultFocusHighlightEnabled="false"
+            android:focusable="true"
+            android:focusableInTouchMode="true" />
 
         <Button
             android:id="@+id/done_control_config"

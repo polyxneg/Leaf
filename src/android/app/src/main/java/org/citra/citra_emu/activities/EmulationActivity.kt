@@ -45,9 +45,10 @@ import org.citra.citra_emu.features.settings.model.IntSetting
 import org.citra.citra_emu.features.settings.model.SettingsViewModel
 import org.citra.citra_emu.features.settings.model.view.InputBindingSetting
 import org.citra.citra_emu.fragments.EmulationFragment
+import org.citra.citra_emu.leaf.LeafHomeActivity
+import org.citra.citra_emu.leaf.LeafSession
 import org.citra.citra_emu.fragments.MessageDialogFragment
 import org.citra.citra_emu.model.Game
-import org.citra.citra_emu.ui.main.MainActivity
 import org.citra.citra_emu.utils.BuildUtil
 import org.citra.citra_emu.utils.CitraDirectoryUtils
 import org.citra.citra_emu.utils.ControllerMappingHelper
@@ -113,7 +114,7 @@ class EmulationActivity : AppCompatActivity() {
             super.onCreate(null) // null: don't restore fragments into an activity we're killing
             secondaryDisplayManager = SecondaryDisplay(this)
             startActivity(
-                Intent(this, MainActivity::class.java).apply {
+                Intent(this, LeafHomeActivity::class.java).apply {
                     addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
             )
@@ -122,6 +123,7 @@ class EmulationActivity : AppCompatActivity() {
         }
 
         settingsViewModel.settings.loadSettings()
+        LeafSession.configure(this)
 
         screenAdjustmentUtil = ScreenAdjustmentUtil(this, windowManager, settingsViewModel.settings)
 
@@ -388,6 +390,10 @@ class EmulationActivity : AppCompatActivity() {
             return super.dispatchKeyEvent(event)
         }
 
+        if (LeafSession.handleKeyEvent(event)) {
+            return true
+        }
+
         when (event.action) {
             KeyEvent.ACTION_DOWN -> {
                 // On some devices, the back gesture / button press is not intercepted by androidx
@@ -438,6 +444,7 @@ class EmulationActivity : AppCompatActivity() {
         if (event.actionMasked == MotionEvent.ACTION_CANCEL) {
             return true
         }
+        LeafSession.onMotionEvent(event)
         val input = event.device
         val motions = input.motionRanges
         val axisValuesCirclePad = floatArrayOf(0.0f, 0.0f)

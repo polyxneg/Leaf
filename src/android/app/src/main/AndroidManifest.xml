@@ -47,17 +47,20 @@
             android:resource="@xml/game_mode_config" />
 
         <activity
-            android:name="org.citra.citra_emu.ui.main.MainActivity"
-            android:theme="@style/Theme.Citra.Splash.Main"
-            android:exported="true">
-
-            <!-- This intentfilter marks this Activity as the one that gets launched from Home screen. -->
+            android:name="org.citra.citra_emu.leaf.LeafHomeActivity"
+            android:theme="@style/Theme.Leaf.Splash"
+            android:exported="true"
+            android:configChanges="orientation|screenSize|uiMode">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER"/>
             </intent-filter>
         </activity>
+        <activity
+            android:name="org.citra.citra_emu.ui.main.MainActivity"
+            android:theme="@style/Theme.Citra.Splash.Main"
+            android:exported="false" />
 
         <activity
             android:name="org.citra.citra_emu.features.settings.ui.SettingsActivity"

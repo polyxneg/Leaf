@@ -64,3 +64,25 @@ GIT-TAG
 
 # verify-release.sh downloads
 verify/
+# Leaf: release signing (never publish the keystore or its password)
+signing/
+*.jks
+*.keystore
+*.p12
+*.pem
+leaf-release.env
+*.env
+
+# Leaf: build outputs and packages
+*.apk
+*.aab
+*.apks
+*.idsig
+output-metadata.json
+src/android/app/release/
+src/android/app/.cxx/
+src/android/.gradle/
+src/android/local.properties
+
+# Leaf: build logs
+*.log

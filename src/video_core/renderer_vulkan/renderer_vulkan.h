@@ -62,8 +62,10 @@ struct PresentUniformData {
     int screen_id_r = 0;
     int layer = 0;
     int reverse_interlaced = 0;
+    /// Leaf: x = opacity, y = colour-key tolerance (0 disables keying), z = key edge softness
+    Common::Vec4f leaf_params{1.0f, 0.0f, 0.0f, 0.0f};
 };
-static_assert(sizeof(PresentUniformData) == 112,
+static_assert(sizeof(PresentUniformData) == 128,
               "PresentUniformData does not structure in shader!");
 
 class RendererVulkan : public VideoCore::RendererBase {
@@ -106,7 +108,9 @@ private:
     void DrawTopScreen(const Layout::FramebufferLayout& layout,
                        const Common::Rectangle<u32>& top_screen);
     void DrawSingleScreen(u32 screen_id, float x, float y, float w, float h,
-                          Layout::DisplayOrientation orientation);
+                          Layout::DisplayOrientation orientation,
+                          const Common::Rectangle<float>* crop = nullptr);
+    void DrawBottomRegions(const Layout::FramebufferLayout& layout);
     void DrawSingleScreenStereo(u32 screen_id_l, u32 screen_id_r, float x, float y, float w,
                                 float h, Layout::DisplayOrientation orientation);
 

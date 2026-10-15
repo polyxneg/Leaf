@@ -14,6 +14,7 @@
 #include "common/file_util.h"
 #include "common/settings.h"
 #include "core/core_timing.h"
+#include "core/leaf/leaf.h"
 #include "core/perf_stats.h"
 #include "video_core/gpu.h"
 
@@ -238,7 +239,7 @@ void FrameLimiter::DoFrameLimiting(microseconds current_system_time_us) {
     }
 
     auto now = Clock::now();
-    double sleep_scale = Settings::GetFrameLimit() / 100.0;
+    double sleep_scale = Settings::GetFrameLimit() / 100.0 * Leaf::PaceScale();
 
     if (Settings::GetFrameLimit() == 0) {
         return;

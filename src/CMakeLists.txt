@@ -197,6 +197,10 @@ add_subdirectory(audio_core)
 add_subdirectory(network)
 add_subdirectory(input_common)
 
+if (ENABLE_LEAF_HARNESS)
+    add_subdirectory(leaf_harness)
+endif()
+
 if (ENABLE_TESTS)
     add_subdirectory(tests)
 endif()

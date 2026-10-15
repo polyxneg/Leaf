@@ -24,26 +24,31 @@
 
     <item
         android:id="@+id/menu_landscape_screen_layout"
+        android:visible="false"
         android:icon="@drawable/ic_fit_screen"
         android:title="@string/emulation_switch_screen_layout" />
 
     <item
         android:id="@+id/menu_portrait_screen_layout"
+        android:visible="false"
         android:icon="@drawable/ic_portrait_fit_screen"
         android:title="@string/emulation_switch_portrait_layout" />
 
     <item
         android:id="@+id/menu_secondary_screen_layout"
+        android:visible="false"
         android:icon="@drawable/ic_secondary_fit_screen"
         android:title="@string/emulation_secondary_display_management" />
 
     <item
         android:id="@+id/menu_swap_screens"
+        android:visible="false"
         android:icon="@drawable/ic_splitscreen"
         android:title="@string/emulation_swap_screens" />
 
     <item
         android:id="@+id/menu_rotate_upright"
+        android:visible="false"
         android:icon="@drawable/ic_rotate_up_right"
         android:title="@string/emulation_rotate_upright" />
 

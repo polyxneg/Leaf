@@ -68,6 +68,8 @@
 #include "common/android_utils.h"
 #include "jni/id_cache.h"
 #include "jni/input_manager.h"
+#include "core/leaf/leaf.h"
+#include "core/leaf/ui_scenes.h"
 #include "jni/ndk_motion.h"
 #include "multiplayer.h"
 #include "video_core/debug_utils/debug_utils.h"
@@ -127,6 +129,24 @@ std::unique_ptr<AndroidMultiplayer> multiplayer{nullptr};
 std::shared_ptr<Network::AnnounceMultiplayerSession> announce_multiplayer_session;
 
 } // Anonymous namespace
+
+namespace {
+// Circle pad state for the Leaf HUD, which hides while the player walks.
+std::array<bool, 4> leaf_circle_pad_buttons{};
+bool leaf_circle_pad_stick = false;
+
+void UpdateLeafMovement() {
+    const bool moving = leaf_circle_pad_stick ||
+                        std::any_of(leaf_circle_pad_buttons.begin(),
+                                    leaf_circle_pad_buttons.end(), [](bool b) { return b; });
+    Leaf::Ui::SetMovementInput(moving);
+}
+} // Anonymous namespace
+
+/// Used by leaf_jni.cpp to reach the primary render window.
+EmuWindow_Android* GetLeafRenderWindow() {
+    return window.get();
+}
 
 static jobject ToJavaCoreError(Core::System::ResultStatus result) {
     static const std::map<Core::System::ResultStatus, const char*> CoreErrorNameMap{
@@ -198,8 +218,7 @@ static bool CheckMicPermission() {
 }
 
 static void WaitForEmulationSurfaces(std::unique_lock<std::recursive_mutex>& surface_lock) {
-    surface_cv.wait_for(surface_lock, std::chrono::seconds(2),
-                        [] { return s_secondary_surface != nullptr; });
+    // Leaf is single-screen: there is never a secondary (bottom screen) surface to wait for.
     surface_cv.wait(surface_lock, [] { return s_surface != nullptr; });
 }
 
@@ -262,15 +281,19 @@ static Core::System::ResultStatus RunCitra(const std::string& filepath) {
     case Settings::GraphicsAPI::OpenGL:
         window = std::make_unique<EmuWindow_Android_OpenGL>(system, s_surface, false);
         shared_context = window->GetEGLContext();
-        secondary_window = std::make_unique<EmuWindow_Android_OpenGL>(system, s_secondary_surface,
-                                                                      true, shared_context);
+        if (s_secondary_surface) {
+            secondary_window = std::make_unique<EmuWindow_Android_OpenGL>(
+                system, s_secondary_surface, true, shared_context);
+        }
         break;
 #endif
 #ifdef ENABLE_VULKAN
     case Settings::GraphicsAPI::Vulkan:
         window = std::make_unique<EmuWindow_Android_Vulkan>(s_surface, vulkan_library, false);
-        secondary_window =
-            std::make_unique<EmuWindow_Android_Vulkan>(s_secondary_surface, vulkan_library, true);
+        if (s_secondary_surface) {
+            secondary_window = std::make_unique<EmuWindow_Android_Vulkan>(s_secondary_surface,
+                                                                          vulkan_library, true);
+        }
         break;
 #endif
     default:
@@ -360,10 +383,24 @@ static Core::System::ResultStatus RunCitra(const std::string& filepath) {
     system.RegisterCoreLoopThreadId();
 
     // Start running emulation
+    auto leaf_perf_time = std::chrono::steady_clock::now();
     while (!stop_run) {
         if (!pause_emulation) {
             const auto result = system.RunLoop();
             if (result == Core::System::ResultStatus::Success) {
+                // Leaf: performance summary every 5 s (frame time split per vblank interval;
+                // "other" is mostly CPU emulation).
+                if (Leaf::IsActive() &&
+                    std::chrono::steady_clock::now() - leaf_perf_time > std::chrono::seconds(5)) {
+                    leaf_perf_time = std::chrono::steady_clock::now();
+                    const auto r = system.GetAndResetPerfStats();
+                    LOG_INFO(Frontend,
+                             "Leaf perf: game {:.1f} fps, speed {:.0f}%, vblank {:.2f} ms "
+                             "(other/cpu {:.2f}, gpu {:.2f}, svc {:.2f}, ipc {:.2f}, swap {:.2f})",
+                             r.game_fps, r.emulation_speed * 100.0, r.time_vblank_interval * 1e3,
+                             r.time_remaining * 1e3, r.time_gpu * 1e3, r.time_hle_svc * 1e3,
+                             r.time_hle_ipc * 1e3, r.time_swap * 1e3);
+                }
                 continue;
             }
             if (result == Core::System::ResultStatus::ShutdownRequested) {
@@ -858,6 +895,13 @@ jboolean Java_org_citra_citra_1emu_NativeLibrary_onGamePadEvent([[maybe_unused]]
                                                                 [[maybe_unused]] jobject obj,
                                                                 [[maybe_unused]] jstring j_device,
                                                                 jint j_button, jint action) {
+    if (j_button >= InputManager::N3DS_CIRCLEPAD_UP &&
+        j_button <= InputManager::N3DS_CIRCLEPAD_RIGHT) {
+        leaf_circle_pad_buttons[j_button - InputManager::N3DS_CIRCLEPAD_UP] = action != 0;
+        UpdateLeafMovement();
+    }
+    if (action && j_button == InputManager::N3DS_BUTTON_A)
+        Leaf::Ui::NotifyConfirm();
     bool consumed{};
     if (action) {
         consumed = InputManager::ButtonHandler()->PressKey(j_button);
@@ -883,6 +927,10 @@ jboolean Java_org_citra_citra_1emu_NativeLibrary_onGamePadMoveEvent(
         r = std::sqrt(r);
         x /= r;
         y /= r;
+    }
+    if (axis == InputManager::N3DS_CIRCLEPAD) {
+        leaf_circle_pad_stick = x * x + y * y > 0.04f;
+        UpdateLeafMovement();
     }
     return static_cast<jboolean>(InputManager::AnalogHandler()->MoveJoystick(axis, x, y));
 }

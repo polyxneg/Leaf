@@ -23,6 +23,7 @@ add_library(citra-android SHARED
     id_cache.cpp
     id_cache.h
     jni_setting_keys.cpp
+    leaf_jni.cpp
     multiplayer.cpp
     multiplayer.h
     native.cpp

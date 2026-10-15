@@ -28,6 +28,8 @@
 #endif
 #include "core/cheats/cheats.h"
 #include "core/core.h"
+#include "core/leaf/leaf.h"
+#include "core/leaf/ui_patcher.h"
 #include "core/core_timing.h"
 #include "core/dumping/backend.h"
 #include "core/file_sys/ncch_container.h"
@@ -363,6 +365,7 @@ System::ResultStatus System::Load(Frontend::EmuWindow& emu_window, const std::st
                                   Frontend::EmuWindow* secondary_window) {
     Settings::ResetTemporaryFrameLimit();
     FileUtil::SetCurrentRomPath(filepath);
+    Leaf::UiPatcher::EnsureMods(filepath);
     if (early_app_loader) {
         app_loader = std::move(early_app_loader);
     } else {
@@ -541,6 +544,7 @@ System::ResultStatus System::Load(Frontend::EmuWindow& emu_window, const std::st
 
     cheat_engine.LoadCheatFile(title_id);
     cheat_engine.Connect(process->process_id);
+    Leaf::OnProgramLoaded(*this, title_id, *process);
 
     perf_stats = std::make_unique<PerfStats>(title_id);
 

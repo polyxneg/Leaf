@@ -21,7 +21,7 @@ plugins {
  * next 680 years.
  */
 val autoVersion = (((System.currentTimeMillis() / 1000) - 1451606400) / 10).toInt()
-val abiFilter = listOf("arm64-v8a", "x86_64")
+val abiFilter = listOf("arm64-v8a")
 
 val downloadedJniLibsPath = "${layout.buildDirectory.get().asFile.path}/downloadedJniLibs"
 
@@ -63,7 +63,7 @@ android {
     defaultConfig {
         // The application ID refers to Lime3DS to allow for
         // the Play Store listing, which was originally set up for Lime3DS, to still be used.
-        applicationId = "org.azahar_emu.azahar"
+        applicationId = "me.polydoros.leaf"
         minSdk = 29
         targetSdk = 37
         versionCode = autoVersion
@@ -180,7 +180,7 @@ android {
         register("googlePlay") {
             dimension = "version"
             versionNameSuffix = "-googleplay"
-            applicationId = "io.github.lime3ds.android"
+            applicationId = "me.polydoros.leaf"
         }
     }
 
@@ -269,6 +269,9 @@ fun getGitVersion(): String {
         val gitTag = System.getenv("GIT_TAG_NAME")
         versionName = gitTag ?: versionName
     }
+
+    // Leaf releases: an explicit version (e.g. LEAF_VERSION=1.0.0) instead of the git hash.
+    System.getenv("LEAF_VERSION")?.let { versionName = it }
 
     return versionName
 }

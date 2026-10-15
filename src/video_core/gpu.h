@@ -24,6 +24,7 @@ class DebugContext;
 class PicaCore;
 struct RegsLcd;
 union ColorFill;
+struct DisplayTransferConfig;
 } // namespace Pica
 
 namespace Frontend {
@@ -106,6 +107,8 @@ private:
     void MemoryFill(u32 index, u32 intr_index);
 
     void MemoryTransfer();
+
+    void LeafClearForBottomScreen(const Pica::DisplayTransferConfig& transfer);
 
     void VBlankCallback(uintptr_t user_data, s64 cycles_late);
 
