@@ -43,6 +43,7 @@ object LeafSettings {
     private const val KEY_RESOLUTION = "leaf_resolution"
     private const val KEY_SHARP_UI_REMOVED = "leaf_sharp_ui_removed"
     private const val KEY_CPU_CLOCK = "leaf_cpu_clock"
+    private const val KEY_AUTO_STACK = "leaf_auto_stack"
     private const val KEY_DEFAULTS_APPLIED = "leaf_defaults_applied_v1"
 
     private val prefs: SharedPreferences
@@ -105,6 +106,11 @@ object LeafSettings {
     var sharpUiRemoved: Boolean
         get() = prefs.getBoolean(KEY_SHARP_UI_REMOVED, false)
         set(value) = prefs.edit { putBoolean(KEY_SHARP_UI_REMOVED, value) }
+
+    /** Picked-up items go onto matching stacks in the pockets (off = the original game). */
+    var autoStack: Boolean
+        get() = prefs.getBoolean(KEY_AUTO_STACK, false)
+        set(value) = prefs.edit { putBoolean(KEY_AUTO_STACK, value) }
 
     /** Emulated CPU clock in percent of the 3DS's (more removes the game's own slowdowns). */
     var cpuClock: Int

@@ -329,6 +329,27 @@
             android:layout_marginTop="4dp"
             android:text="@string/leaf_controller_hint" />
 
+        <TextView
+            style="@style/TextAppearance.Material3.TitleMedium"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:text="@string/leaf_gameplay_header" />
+
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/leaf_auto_stack"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/leaf_auto_stack" />
+
+        <TextView
+            style="@style/TextAppearance.Material3.BodySmall"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="@string/leaf_auto_stack_hint" />
+
         <com.google.android.material.button.MaterialButton
             android:id="@+id/leaf_advanced"
             style="@style/Widget.Material3.Button.TextButton"

@@ -15,6 +15,7 @@
 #include "core/core.h"
 #include "core/loader/loader.h"
 #include "core/movie.h"
+#include "core/leaf/leaf.h"
 #include "core/savestate.h"
 #include "network/network.h"
 
@@ -240,6 +241,7 @@ void System::LoadState(u32 slot) {
     // Deserialize
     iarchive ia{sstream};
     ia&* this;
+    Leaf::OnStateLoaded(*this);
 }
 
 std::vector<u8> System::SaveStateBuffer() const {
@@ -298,7 +300,12 @@ bool System::LoadStateBuffer(std::vector<u8> buffer) {
         return false;
     }
     std::string revision = fmt::format("{:02x}", fmt::join(header.revision, ""));
+#ifdef LEAF_DEBUG_HOOKS
+    // Harness builds: states only ever come from the same working tree.
+    if (false) {
+#else
     if (revision != Common::g_scm_rev) {
+#endif
         LOG_ERROR(Core,
                   "Save state file created from a different revision (core: {}, savestate: {})",
                   Common::g_scm_rev, revision);
@@ -316,6 +323,7 @@ bool System::LoadStateBuffer(std::vector<u8> buffer) {
     // Deserialize
     iarchive ia{sstream};
     ia&* this;
+    Leaf::OnStateLoaded(*this);
 
     return true;
 }

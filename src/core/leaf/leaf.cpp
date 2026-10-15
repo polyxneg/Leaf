@@ -11,7 +11,9 @@
 #include "common/logging/log.h"
 #include "core/core.h"
 #include "core/hle/kernel/process.h"
+#include "core/leaf/debug_hooks.h"
 #include "core/leaf/leaf.h"
+#include "core/leaf/pocket_stacks.h"
 #include "core/leaf/ui_scenes.h"
 #include "core/memory.h"
 
@@ -120,6 +122,7 @@ bool IsActive() {
 
 void OnProgramLoaded(Core::System& system, u64 title_id, Kernel::Process& process) {
     g_camera_sites.clear();
+    PocketStacks::Reset();
     g_active = IsLeafTitle(title_id);
     g_config.layout_enabled = g_active.load();
     if (!g_active)
@@ -127,7 +130,13 @@ void OnProgramLoaded(Core::System& system, u64 title_id, Kernel::Process& proces
     LOG_INFO(Core, "Leaf: Animal Crossing: New Leaf detected ({:016X})", title_id);
     LocateCameraParams(system, process);
     ApplyCameraAspect(system);
+    PocketStacks::Locate(system, process);
+    PocketStacks::Apply(system);
     Ui::Initialize(system.GetAppLoader());
+}
+
+void OnStateLoaded(Core::System& system) {
+    PocketStacks::Apply(system);
 }
 
 void ApplyCameraAspect(Core::System& system) {
@@ -174,5 +183,12 @@ const Common::Rectangle<float>* TopScreenCrop() {
     static constexpr Common::Rectangle<float> crop{0.0f, 1.0f / 240.0f, 1.0f, 1.0f};
     return g_active && g_config.layout_enabled.load() ? &crop : nullptr;
 }
+
+#ifdef LEAF_DEBUG_HOOKS
+Debug::Hooks& Debug::GetHooks() {
+    static Hooks hooks;
+    return hooks;
+}
+#endif
 
 } // namespace Leaf

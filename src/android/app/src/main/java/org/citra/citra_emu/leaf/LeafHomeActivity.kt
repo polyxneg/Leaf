@@ -144,6 +144,11 @@ class LeafHomeActivity : AppCompatActivity() {
             LeafSettings.autoMapControllers = checked
             if (checked) LeafSession.autoMapControllerIfNeeded(this, force = true)
         }
+        binding.leafAutoStack.isChecked = LeafSettings.autoStack
+        binding.leafAutoStack.setOnCheckedChangeListener { _, checked ->
+            LeafSettings.autoStack = checked
+        }
+
         binding.leafNintendoLayout.isChecked = LeafSettings.nintendoLayout
         binding.leafNintendoLayout.setOnCheckedChangeListener { _, checked ->
             LeafSettings.nintendoLayout = checked

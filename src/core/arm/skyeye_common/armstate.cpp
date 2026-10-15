@@ -13,6 +13,7 @@
 #include "core/gdbstub/gdbstub.h"
 #endif
 #include "core/memory.h"
+#include "core/leaf/debug_hooks.h"
 
 #ifndef SIGTRAP
 constexpr u32 SIGTRAP = 5;
@@ -192,10 +193,16 @@ void ARMul_State::ResetMPCoreCP15Registers() {
 }
 
 u8 ARMul_State::ReadMemory8(u32 address) const {
+#ifdef LEAF_DEBUG_HOOKS
+    Leaf::Debug::OnRead(address, 1, Reg);
+#endif
     return memory.Read8(address);
 }
 
 u16 ARMul_State::ReadMemory16(u32 address) const {
+#ifdef LEAF_DEBUG_HOOKS
+    Leaf::Debug::OnRead(address, 2, Reg);
+#endif
     u16 data = memory.Read16(address);
 
     if (InBigEndianMode())
@@ -205,6 +212,9 @@ u16 ARMul_State::ReadMemory16(u32 address) const {
 }
 
 u32 ARMul_State::ReadMemory32(u32 address) const {
+#ifdef LEAF_DEBUG_HOOKS
+    Leaf::Debug::OnRead(address, 4, Reg);
+#endif
     u32 data = memory.Read32(address);
 
     if (InBigEndianMode())
@@ -214,6 +224,9 @@ u32 ARMul_State::ReadMemory32(u32 address) const {
 }
 
 u64 ARMul_State::ReadMemory64(u32 address) const {
+#ifdef LEAF_DEBUG_HOOKS
+    Leaf::Debug::OnRead(address, 8, Reg);
+#endif
     u64 data = memory.Read64(address);
 
     if (InBigEndianMode())
@@ -223,6 +236,9 @@ u64 ARMul_State::ReadMemory64(u32 address) const {
 }
 
 void ARMul_State::WriteMemory8(u32 address, u8 data) {
+#ifdef LEAF_DEBUG_HOOKS
+    Leaf::Debug::OnWrite(address, 1, data, Reg);
+#endif
     memory.Write8(address, data);
 }
 
@@ -230,6 +246,9 @@ void ARMul_State::WriteMemory16(u32 address, u16 data) {
     if (InBigEndianMode())
         data = Common::swap16(data);
 
+#ifdef LEAF_DEBUG_HOOKS
+    Leaf::Debug::OnWrite(address, 2, data, Reg);
+#endif
     memory.Write16(address, data);
 }
 
@@ -237,6 +256,9 @@ void ARMul_State::WriteMemory32(u32 address, u32 data) {
     if (InBigEndianMode())
         data = Common::swap32(data);
 
+#ifdef LEAF_DEBUG_HOOKS
+    Leaf::Debug::OnWrite(address, 4, data, Reg);
+#endif
     memory.Write32(address, data);
 }
 
@@ -244,6 +266,9 @@ void ARMul_State::WriteMemory64(u32 address, u64 data) {
     if (InBigEndianMode())
         data = Common::swap64(data);
 
+#ifdef LEAF_DEBUG_HOOKS
+    Leaf::Debug::OnWrite(address, 8, data, Reg);
+#endif
     memory.Write64(address, data);
 }
 

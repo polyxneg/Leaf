@@ -12,12 +12,23 @@
 //                                     l,r,start,select,zl,zr) for N frames, then release
 //   stick <x> <y> <frames>            circle pad (-1..1) for N frames
 //   tap <x> <y> [frames]              touch bottom screen at native 320x240 coords
+//   drag <x1> <y1> <x2> <y2> [frames] touch-drag on the bottom screen over N frames
 //   shot <name>                       write <out>/<name>_top.png and <name>_bot.png
 //   r32 <addr> / w32 <addr> <value>   read / write emulated memory
 //   wf32 <addr> <float>               write a float
 //   dump <addr> <len> <file>          dump memory to a file
 //   save <file> / load <file>         savestates
 //   aspect <ratio>                    apply Leaf camera aspect (0 = native, e.g. 1.7778)
+//   autostack <0|1>                   Leaf auto-stack on pickup (LEAF_AUTOSTACK=1 at boot)
+//   w8 / w16 <addr> <value>           write a byte / halfword
+//   hexd <addr> <len>                 hex dump to stdout
+//   find <hexbytes> [max]             search all mapped process memory for a byte pattern
+//   snap <file>                       dump every writable mapping as (u32 addr, u32 size, data)
+// Reverse-engineering commands (need LEAF_INTERP=1 and a LEAF_DEBUG_HOOKS build):
+//   watch <addr> <len> [max]          log writes into [addr, addr+len) with registers
+//   rwatch <addr> <len> [max]         log reads from [addr, addr+len) (pc, lr)
+//   bp <addr>[,<addr>...] [max]       log registers whenever an instruction address executes
+//   unwatch / unbp                    remove them
 
 #include <algorithm>
 #include <cmath>
@@ -42,7 +53,10 @@
 #include "core/frontend/framebuffer_layout.h"
 #include "core/frontend/input.h"
 #include "core/hle/service/service.h"
+#include "core/hle/kernel/process.h"
+#include "core/leaf/debug_hooks.h"
 #include "core/leaf/leaf.h"
+#include "core/leaf/pocket_stacks.h"
 #include "core/leaf/ui_patcher.h"
 #include "core/leaf/ui_probe.h"
 #include "core/leaf/ui_scenes.h"
@@ -319,6 +333,12 @@ int main(int argc, char** argv) {
     Settings::values.init_time = 1767268800ULL; // 2026-01-01 12:00 UTC, keeps runs reproducible
     Settings::values.audio_emulation = Settings::AudioEmulation::HLE;
     Settings::values.output_type = AudioCore::SinkType::Null;
+    if (std::getenv("LEAF_INTERP")) {
+        Settings::values.use_cpu_jit = false;
+        Settings::values.use_fastinterp = false;
+    }
+    if (std::getenv("LEAF_AUTOSTACK"))
+        Leaf::GetConfig().auto_stack = true;
     if (const char* a = std::getenv("LEAF_ASPECT"))
         Leaf::GetConfig().camera_aspect = std::stof(a);
 
@@ -406,6 +426,20 @@ int main(int argc, char** argv) {
             window.TouchPressed(40 + x, 240 + y);
             run_frames(n);
             window.TouchReleased();
+        } else if (cmd == "drag") {
+            float x1, y1, x2, y2;
+            u64 n = 30;
+            ss >> x1 >> y1 >> x2 >> y2 >> n;
+            window.TouchPressed(40 + static_cast<unsigned>(x1), 240 + static_cast<unsigned>(y1));
+            run_frames(8);
+            for (u64 i = 1; i <= n; i++) {
+                const float t = static_cast<float>(i) / n;
+                window.TouchMoved(40 + static_cast<unsigned>(x1 + (x2 - x1) * t),
+                                  240 + static_cast<unsigned>(y1 + (y2 - y1) * t));
+                run_frames(1);
+            }
+            run_frames(8);
+            window.TouchReleased();
         } else if (cmd == "wtap") {
             // wtap <x> <y> <window w> <window h> [frames]: tap the main screen like a player
             // would, through the regions of the last composite of that size.
@@ -478,6 +512,12 @@ int main(int argc, char** argv) {
             ss >> a;
             Leaf::GetConfig().camera_aspect = a;
             Leaf::ApplyCameraAspect(system);
+        } else if (cmd == "autostack") {
+            int on = 0;
+            ss >> on;
+            Leaf::GetConfig().auto_stack = on != 0;
+            Leaf::PocketStacks::Apply(system);
+            std::printf("autostack %d (available %d)\n", on, Leaf::PocketStacks::Available());
         } else if (cmd == "composite") {
             // composite <name> <width> <height> <mode: 0=16:9 1=4:3 2=5:3 3=fill>
             std::string name;
@@ -503,6 +543,129 @@ int main(int argc, char** argv) {
                 std::printf("bounds %016llx %.1f %.1f %.1f %.1f\n",
                             static_cast<unsigned long long>(key), r.left, r.top, r.right,
                             r.bottom);
+        } else if (cmd == "w8" || cmd == "w16") {
+            std::string a, v;
+            ss >> a >> v;
+            const VAddr addr = std::stoul(a, nullptr, 16);
+            const u32 val = std::stoul(v, nullptr, 16);
+            if (cmd == "w8")
+                system.Memory().Write8(addr, static_cast<u8>(val));
+            else
+                system.Memory().Write16(addr, static_cast<u16>(val));
+        } else if (cmd == "hexd") {
+            std::string a;
+            u32 len = 64;
+            ss >> a >> len;
+            const VAddr addr = std::stoul(a, nullptr, 16);
+            std::vector<u8> buf(len);
+            system.Memory().ReadBlock(addr, buf.data(), len);
+            for (u32 i = 0; i < len; i += 16) {
+                std::printf("%08x:", addr + i);
+                for (u32 j = i; j < std::min(len, i + 16); j++)
+                    std::printf(" %02x", buf[j]);
+                std::printf("\n");
+            }
+        } else if (cmd == "find" || cmd == "snap") {
+            std::string arg;
+            u32 max_hits = 64;
+            ss >> arg >> max_hits;
+            std::vector<u8> pattern;
+            if (cmd == "find")
+                for (std::size_t i = 0; i + 1 < arg.size(); i += 2)
+                    pattern.push_back(static_cast<u8>(std::stoul(arg.substr(i, 2), nullptr, 16)));
+            std::ofstream snap;
+            if (cmd == "snap")
+                snap.open(arg, std::ios::binary);
+            auto process = system.Kernel().GetCurrentProcess();
+            u32 hits = 0;
+            for (const auto& [base, vma] : process->vm_manager.vma_map) {
+                if (vma.type != Kernel::VMAType::BackingMemory ||
+                    (static_cast<u32>(vma.permissions) & 1) == 0)
+                    continue;
+                std::vector<u8> buf(vma.size);
+                system.Memory().ReadBlock(*process, base, buf.data(), vma.size);
+                if (cmd == "snap") {
+                    if ((static_cast<u32>(vma.permissions) & 2) == 0)
+                        continue;
+                    const u32 hdr[2] = {base, vma.size};
+                    snap.write(reinterpret_cast<const char*>(hdr), 8);
+                    snap.write(reinterpret_cast<const char*>(buf.data()), buf.size());
+                    continue;
+                }
+                for (auto it = buf.begin();
+                     (it = std::search(it, buf.end(), pattern.begin(), pattern.end())) != buf.end();
+                     ++it) {
+                    if (hits++ < max_hits)
+                        std::printf("found %08x\n", base + static_cast<u32>(it - buf.begin()));
+                }
+            }
+            if (cmd == "find")
+                std::printf("find: %u hits\n", hits);
+#ifdef LEAF_DEBUG_HOOKS
+        } else if (cmd == "watch" || cmd == "bp") {
+            std::string a;
+            u32 n = 0, max_hits = 200;
+            ss >> a;
+            auto& hooks = Leaf::Debug::GetHooks();
+            static u32 hit_count, hit_max;
+            hit_count = 0;
+            const auto print_regs = [](const Leaf::Debug::Regs& r) {
+                for (int i = 0; i < 16; i++)
+                    std::printf("%sr%d=%08x", i % 8 ? " " : "\n   ", i, r[i]);
+                std::printf("\n");
+            };
+            if (cmd == "watch") {
+                ss >> std::hex >> n >> std::dec >> max_hits;
+                hit_max = max_hits;
+                hooks.watch_begin = std::stoul(a, nullptr, 16);
+                hooks.watch_end = hooks.watch_begin + n;
+                hooks.on_write = [print_regs](VAddr addr, u32 size, u64 value,
+                                              const Leaf::Debug::Regs& r) {
+                    if (hit_count++ >= hit_max)
+                        return;
+                    std::printf("write %08x size %u = %llx pc=%08x lr=%08x frame %llu", addr, size,
+                                static_cast<unsigned long long>(value), r[15], r[14],
+                                static_cast<unsigned long long>(g_frames));
+                    print_regs(r);
+                };
+            } else {
+                ss >> max_hits;
+                hit_max = max_hits;
+                std::stringstream ls(a);
+                std::string item;
+                while (std::getline(ls, item, ','))
+                    hooks.exec.insert(std::stoul(item, nullptr, 16));
+                hooks.on_exec = [print_regs](const Leaf::Debug::Regs& r) {
+                    if (hit_count++ >= hit_max)
+                        return;
+                    std::printf("exec pc=%08x lr=%08x frame %llu", r[15], r[14],
+                                static_cast<unsigned long long>(g_frames));
+                    print_regs(r);
+                };
+            }
+            hooks.active = true;
+        } else if (cmd == "rwatch") {
+            std::string a;
+            u32 n = 0;
+            static u32 rhits, rmax;
+            rhits = 0;
+            rmax = 200;
+            ss >> a >> std::hex >> n >> std::dec >> rmax;
+            auto& hooks = Leaf::Debug::GetHooks();
+            hooks.read_begin = std::stoul(a, nullptr, 16);
+            hooks.read_end = hooks.read_begin + n;
+            hooks.on_read = [](VAddr addr, u32 size, const Leaf::Debug::Regs& r) {
+                if (rhits++ < rmax)
+                    std::printf("read %08x size %u pc=%08x lr=%08x frame %llu\n", addr, size,
+                                r[15], r[14], static_cast<unsigned long long>(g_frames));
+            };
+            hooks.active = true;
+        } else if (cmd == "unwatch") {
+            Leaf::Debug::GetHooks().watch_end = 0;
+            Leaf::Debug::GetHooks().read_end = 0;
+        } else if (cmd == "unbp") {
+            Leaf::Debug::GetHooks().exec.clear();
+#endif
         } else if (cmd == "frames") {
             std::printf("frame %llu\n", static_cast<unsigned long long>(g_frames));
         } else {

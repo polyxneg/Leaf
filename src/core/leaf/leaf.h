@@ -49,6 +49,9 @@ struct Config {
     std::atomic<float> panel_opacity{0.96f};
     std::atomic<int> panel_anchor{static_cast<int>(PanelAnchor::Center)};
 
+    /// Auto-stack on pickup (see pocket_stacks.h). Off by default; off = the original game.
+    std::atomic<bool> auto_stack{false};
+
     /// Refresh rate of the device display (Hz), 0 if unknown. Used to pace emulation so every
     /// display refresh gets a new frame (see PaceScale).
     std::atomic<float> display_refresh{0.0f};
@@ -70,6 +73,9 @@ bool IsLeafTitle(u64 title_id);
 
 /// Called by Core::System after the application process has been created but before it runs.
 void OnProgramLoaded(Core::System& system, u64 title_id, Kernel::Process& process);
+
+/// Called after a savestate was loaded: re-applies code patches that live in game memory.
+void OnStateLoaded(Core::System& system);
 
 /// Re-applies the camera aspect to a running game (takes effect on the next camera update).
 void ApplyCameraAspect(Core::System& system);

@@ -450,10 +450,13 @@ add_library(citra_core STATIC EXCLUDE_FROM_ALL
     hle/service/soc/soc_u.h
     hle/service/ssl/ssl_c.cpp
     hle/service/ssl/ssl_c.h
+    leaf/debug_hooks.h
     leaf/leaf.cpp
     leaf/layout_patch.cpp
     leaf/layout_patch.h
     leaf/leaf.h
+    leaf/pocket_stacks.cpp
+    leaf/pocket_stacks.h
     leaf/ui_patcher.cpp
     leaf/ui_patcher.h
     leaf/ui_probe.cpp
@@ -589,4 +592,10 @@ endif()
 
 if (CITRA_USE_PRECOMPILED_HEADERS)
     target_precompile_headers(citra_core PRIVATE precompiled_headers.h)
+endif()
+
+# Reverse-engineering hooks for the Leaf harness (never enabled for app builds).
+option(LEAF_DEBUG_HOOKS "Build Leaf memory watch / breakpoint hooks into the interpreter" OFF)
+if (LEAF_DEBUG_HOOKS)
+    target_compile_definitions(citra_core PUBLIC LEAF_DEBUG_HOOKS)
 endif()

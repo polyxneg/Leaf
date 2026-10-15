@@ -28,6 +28,7 @@
 #endif
 #include "core/hle/kernel/svc.h"
 #include "core/memory.h"
+#include "core/leaf/debug_hooks.h"
 
 #define RM BITS(sht_oper, 0, 3)
 #define RS BITS(sht_oper, 8, 11)
@@ -971,11 +972,21 @@ unsigned InterpreterMainLoop(ARMul_State* cpu) {
     }
 #endif
 
+#ifdef LEAF_DEBUG_HOOKS
+#define LEAF_BP_CHECK                                                                              \
+    if (Leaf::Debug::GetHooks().active && Leaf::Debug::GetHooks().exec.count(cpu->Reg[15]) &&      \
+        Leaf::Debug::GetHooks().on_exec)                                                           \
+        Leaf::Debug::GetHooks().on_exec(cpu->Reg);
+#else
+#define LEAF_BP_CHECK
+#endif
+
 // GCC and Clang have a C++ extension to support a lookup table of labels. Otherwise, fallback to a
 // clunky switch statement.
 #if defined __GNUC__ || (defined __clang__ && !defined _MSC_VER)
 #define GOTO_NEXT_INST                                                                             \
     GDB_BP_CHECK;                                                                                  \
+    LEAF_BP_CHECK;                                                                                 \
     if (num_instrs >= cpu->NumInstrsToExecute)                                                     \
         goto END;                                                                                  \
     num_instrs++;                                                                                  \

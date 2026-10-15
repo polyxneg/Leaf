@@ -50,6 +50,12 @@ JNIEXPORT void JNICALL Java_org_citra_citra_1emu_leaf_LeafNative_setCameraAspect
     }
 }
 
+JNIEXPORT void JNICALL Java_org_citra_citra_1emu_leaf_LeafNative_setAutoStack(JNIEnv*, jobject,
+                                                                               jboolean enabled) {
+    // Read when the game boots (and after savestate loads); set before starting a game.
+    Leaf::GetConfig().auto_stack = enabled;
+}
+
 JNIEXPORT jfloat JNICALL Java_org_citra_citra_1emu_leaf_LeafNative_cameraAspectFor(
     JNIEnv*, jobject, jint display_mode, jint width, jint height) {
     return Leaf::CameraAspectFor(static_cast<Leaf::DisplayMode>(display_mode),

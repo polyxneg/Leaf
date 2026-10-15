@@ -71,6 +71,7 @@ object LeafSession {
         val mode = LeafSettings.resolvedDisplayMode(width, height)
         LeafNative.setLayout(true, mode)
         LeafNative.setCameraAspect(LeafNative.cameraAspectFor(mode, width, height))
+        LeafNative.setAutoStack(LeafSettings.autoStack)
         LeafNative.setPanelStyle(
             LeafSettings.panelScale,
             LeafSettings.panelOpacity,

@@ -12,6 +12,9 @@ object LeafNative {
     /** Camera aspect (width / height) used by the game; 0 keeps the original 5:3. */
     external fun setCameraAspect(aspect: Float)
 
+    /** Auto-stack on pickup; applied when the game boots (see src/core/leaf/pocket_stacks.h). */
+    external fun setAutoStack(enabled: Boolean)
+
     external fun cameraAspectFor(displayMode: Int, width: Int, height: Int): Float
 
     external fun setPanelStyle(scale: Float, opacity: Float, anchor: Int)

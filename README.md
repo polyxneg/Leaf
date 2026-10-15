@@ -36,6 +36,14 @@ Azahar project or Nintendo**. Please report Leaf problems here, not to Azahar.
 - **Smooth play.** The emulator's pacing matches your display's refresh rate,
   the game gets extra emulated CPU headroom, and shaders compile in the
   background. Rendering can be set to native, 2x or 3x resolution.
+- **Optional: stack items when picking them up** (off by default). Fruit,
+  turnips, bell bags and stationery go onto a matching stack in your pockets,
+  like in newer Animal Crossing games, and a full pocket still takes an item
+  that fits on a stack. Leaf only uses the stacks the game already has (the
+  ones you get by dragging items together), so saves contain nothing the
+  unmodified game wouldn't write itself. Works with the original release and
+  with Welcome amiibo (tested with the European versions); if your version
+  isn't recognised, the option simply does nothing.
 
 ## Requirements
 
