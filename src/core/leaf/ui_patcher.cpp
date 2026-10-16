@@ -2,6 +2,7 @@
 // Licensed under GPLv2 or any later version
 // Refer to the misc/licenses/gplv2.txt file included.
 
+#include <sstream>
 #include <fmt/format.h>
 #include "common/file_util.h"
 #include "common/logging/log.h"
@@ -50,6 +51,13 @@ struct BottomAlign {
     float margin;
 };
 
+struct RescaleFix {
+    const char* layout;
+    float scale;
+    float pivot_x; ///< layout units (y up, 0 = centre)
+    float pivot_y;
+};
+
 struct ArcPatch {
     const char* path;           ///< RomFS path of the archive
     bool key_all_textures;      ///< replace every texture with the transparent key colour
@@ -58,6 +66,9 @@ struct ArcPatch {
     std::vector<AspectFix> aspect = {};  ///< top-screen layouts to keep in proportion
     std::vector<AnimWrapParams> anim_wraps = {}; ///< applied after the grafts
     std::vector<BottomAlign> bottom_align = {};
+    /// Top-screen layouts rescaled around a pivot (not aspect related), e.g. to make room for
+    /// bottom-screen content placed below them.
+    std::vector<RescaleFix> rescale = {};
 };
 
 // The remaster UI patch table. Backgrounds become key-coloured (rendered transparent by the
@@ -146,6 +157,78 @@ const std::vector<ArcPatch>& Patches() {
           {"blyt/crdt_time.bclyt", 0.0f, 0.0f}}},
         // Choice bubble: drop the tail that pointed up at the top screen, and make the
         // translucent body opaque so it does not mix with the key colour behind it.
+        // Menu tabs: the orange close tab (top right) is dropped, B closes the menus. On the
+        // main screen it covered values such as Welcome amiibo's coupon count. Its picture and
+        // touch area are hidden (the game switches the tab itself on and off).
+        {"Layout/Menu/menu_tab.arc",
+         false,
+         {
+             {"blyt/menu_tab.bclyt", "im_tab_05", PaneOpKind::Hide},
+             {"blyt/menu_tab.bclyt", "B_back_00", PaneOpKind::Hide},
+             // Welcome amiibo's Miiverse "post a screenshot" button: the service is gone and
+             // the game waits forever for it, so the button is removed.
+             {"blyt/menu_tab.bclyt", "P_post_00", PaneOpKind::Hide},
+             {"blyt/menu_tab.bclyt", "B_post_00", PaneOpKind::Hide},
+         }},
+        // Welcome amiibo passport, cat tasks page: the task details window (top screen) shrinks
+        // a little and moves down, out from under the coupon count in the top-right corner (so
+        // Leaf can show it alone over the task list) and behind the passport's page tabs (so
+        // it does not peek out above the list). Scaling by 0.847 around (0, -147.8) puts its
+        // top edge at y 52, its bottom edge at the screen's and keeps it centred.
+        {"Layout/passWin/m_plife.arc",
+         false,
+         {},
+         {},
+         {},
+         {},
+         {},
+         {{"blyt/plifeT_00.bclyt", 0.847f, 0.0f, -147.8f}}},
+        // Welcome amiibo coupon machine: the bottom screen's scenery is dropped, so its menu
+        // fills the main screen with the top screen (sky) visible around the buttons; the big
+        // coupon picture on the top screen is dropped too.
+        {"Layout/ticket/ticket.arc",
+         false,
+         {
+             {"blyt/tct_BG_00.bclyt", "P_sky_00", PaneOpKind::Hide},
+             {"blyt/tct_BG_00.bclyt", "P_grand_00", PaneOpKind::Hide},
+             {"blyt/tct_BG_00.bclyt", "P_cloud_00", PaneOpKind::Hide},
+             {"blyt/tct_BG_00.bclyt", "P_cloud_02", PaneOpKind::Hide},
+             // The scrolling mountains and trees are shrunk to nothing, not hidden: the game only
+             // redraws the bottom screen while its animation runs, and its messages
+             // ("no MEOW Coupons to collect") would otherwise be drawn once and lost.
+             {"blyt/tct_BG_00.bclyt", "P_mt_00", PaneOpKind::Size, 0.0f, 0.0f},
+             {"blyt/tct_BG_00.bclyt", "P_mt_01", PaneOpKind::Size, 0.0f, 0.0f},
+             {"blyt/tct_BG_00.bclyt", "P_mt_02", PaneOpKind::Size, 0.0f, 0.0f},
+             {"blyt/tct_BG_00.bclyt", "P_mt_03", PaneOpKind::Size, 0.0f, 0.0f},
+             {"blyt/tct_BG_00.bclyt", "P_mt_04", PaneOpKind::Size, 0.0f, 0.0f},
+             {"blyt/tct_BG_00.bclyt", "P_mt_05", PaneOpKind::Size, 0.0f, 0.0f},
+             {"blyt/tct_BG_00.bclyt", "P_mt_06", PaneOpKind::Size, 0.0f, 0.0f},
+             {"blyt/tct_BG_00.bclyt", "P_mt_07", PaneOpKind::Size, 0.0f, 0.0f},
+             {"blyt/tct_BG_00.bclyt", "P_mt_08", PaneOpKind::Size, 0.0f, 0.0f},
+             {"blyt/tct_BG_00.bclyt", "P_mt_09", PaneOpKind::Size, 0.0f, 0.0f},
+             {"blyt/tct_BG_00.bclyt", "P_tree_00", PaneOpKind::Size, 0.0f, 0.0f},
+             {"blyt/tct_BG_00.bclyt", "P_tree_01", PaneOpKind::Size, 0.0f, 0.0f},
+             {"blyt/tct_BG_00.bclyt", "P_tree_02", PaneOpKind::Size, 0.0f, 0.0f},
+             {"blyt/tct_BG_00.bclyt", "P_tree_03", PaneOpKind::Size, 0.0f, 0.0f},
+             {"blyt/tct_BG_00.bclyt", "P_tree_04", PaneOpKind::Size, 0.0f, 0.0f},
+             {"blyt/tct_BG_00.bclyt", "P_tree_05", PaneOpKind::Size, 0.0f, 0.0f},
+             {"blyt/tct_BG_00.bclyt", "P_tree_06", PaneOpKind::Size, 0.0f, 0.0f},
+             {"blyt/tct_BG_00.bclyt", "P_tree_07", PaneOpKind::Size, 0.0f, 0.0f},
+             {"blyt/tct_BG_00.bclyt", "P_tree_08", PaneOpKind::Size, 0.0f, 0.0f},
+             {"blyt/tct_BG_00.bclyt", "P_tree_09", PaneOpKind::Size, 0.0f, 0.0f},
+             {"blyt/tct_BG_00.bclyt", "P_tree_10", PaneOpKind::Size, 0.0f, 0.0f},
+             {"blyt/tct_BG_00.bclyt", "P_tree_11", PaneOpKind::Size, 0.0f, 0.0f},
+             {"blyt/tct_BG_00.bclyt", "P_tree_12", PaneOpKind::Size, 0.0f, 0.0f},
+             {"blyt/tct_BG_00.bclyt", "P_tree_13", PaneOpKind::Size, 0.0f, 0.0f},
+             {"blyt/tct_BG_00.bclyt", "P_tree_14", PaneOpKind::Size, 0.0f, 0.0f},
+             {"blyt/tct_BG_00.bclyt", "P_tree_15", PaneOpKind::Size, 0.0f, 0.0f},
+             {"blyt/tct_menuT_00.bclyt", "N_ticket_00", PaneOpKind::Hide},
+             // Sky (top screen): kept in proportion like the other art; the sky panel itself
+             // is enlarged so it still fills the screen after the aspect scaling.
+             {"blyt/tct_BGT_00.bclyt", "P_sky_00", PaneOpKind::Size, 1200.0f, 600.0f},
+         },
+         {},
+         {{"blyt/tct_BGT_00.bclyt", 0.0f, -120.0f}}},
         {"Layout/selWin/slct_win.arc",
          false,
          {
@@ -244,9 +327,18 @@ bool PrepareMods(const std::string& rom_path, std::string& error) {
     if (marker == MarkerContents(program_id))
         return true;
 
-    // Remove our previous output first so the RomFS below yields the original files.
+    // Remove our previous output first so the RomFS below yields the original files: what the
+    // last run wrote (listed next to the marker) and what this run patches.
+    const std::string list_path = root + "leaf_ui_files.txt";
+    std::string previous;
+    FileUtil::ReadFileToString(true, list_path, previous);
+    std::istringstream previous_files(previous);
+    for (std::string path; std::getline(previous_files, path);)
+        if (!path.empty() && path.find("..") == std::string::npos)
+            FileUtil::Delete(root + "romfs/" + path);
     for (const auto& patch : Patches())
         FileUtil::Delete(root + "romfs/" + patch.path);
+    FileUtil::Delete(list_path);
     loader = Loader::GetLoader(rom_path);
 
     std::shared_ptr<FileSys::RomFSReader> romfs;
@@ -256,6 +348,7 @@ bool PrepareMods(const std::string& rom_path, std::string& error) {
     }
     const auto files = ListRomFS(*romfs);
     const auto [scale_x, scale_y] = AspectScale();
+    std::string written; ///< archives written, one RomFS path per line
 
     for (const auto& patch : Patches()) {
         const auto it = files.find(patch.path);
@@ -267,7 +360,7 @@ bool PrepareMods(const std::string& rom_path, std::string& error) {
         bool changed = ApplyPatch(patch, arc);
         const bool aspect = !patch.aspect.empty() && (scale_x != 1.0f || scale_y != 1.0f);
         if (!patch.grafts.empty() || !patch.anim_wraps.empty() ||
-            !patch.bottom_align.empty() || aspect) {
+            !patch.bottom_align.empty() || !patch.rescale.empty() || aspect) {
             auto entries = ReadArcEntries(arc);
             for (const auto& graft : patch.grafts) {
                 const auto source = files.find(graft.source_arc);
@@ -285,6 +378,13 @@ bool PrepareMods(const std::string& rom_path, std::string& error) {
                     changed = true;
                 else
                     LOG_WARNING(Core, "Leaf: could not wrap {} in {}", wrap.wrapper, patch.path);
+            }
+            for (const auto& fix : patch.rescale) {
+                if (WrapRootChildren(entries, fix.layout, fix.scale, fix.scale, fix.pivot_x,
+                                     fix.pivot_y))
+                    changed = true;
+                else
+                    LOG_WARNING(Core, "Leaf: could not rescale {} in {}", fix.layout, patch.path);
             }
             for (const auto& align : patch.bottom_align) {
                 const float target = -120.0f + align.margin;
@@ -316,7 +416,10 @@ bool PrepareMods(const std::string& rom_path, std::string& error) {
             error = "Unable to write " + out;
             return false;
         }
+        written += patch.path;
+        written += '\n';
     }
+    FileUtil::WriteStringToFile(true, list_path, written);
     FileUtil::WriteStringToFile(true, marker_path, MarkerContents(program_id));
     LOG_INFO(Core, "Leaf: UI mods generated in {}", root);
     return true;

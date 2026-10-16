@@ -36,6 +36,12 @@ object LeafNative {
     /** True while the given remaster scene ("keyboard", "choice", ...) is on screen. */
     external fun sceneVisible(id: String): Boolean
 
+    /**
+     * Leaf's own buttons on screen: {icon, l, t, r, b, corner radius, corner shade} per button
+     * (window pixels).
+     */
+    external fun buttons(): FloatArray
+
     /** Window position {x, y} of a bottom-screen point (320x240 pixels), or null. */
     external fun bottomToWindow(x: Float, y: Float): FloatArray?
 

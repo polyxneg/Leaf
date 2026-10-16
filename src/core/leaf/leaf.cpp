@@ -23,6 +23,7 @@ namespace {
 
 Config g_config;
 std::atomic<bool> g_active{false};
+std::atomic<u64> g_title_id{0};
 
 struct CameraParamSite {
     VAddr table = 0;  // read-only default {near, far, fovy, aspect}
@@ -116,6 +117,10 @@ bool IsLeafTitle(u64 title_id) {
     }
 }
 
+bool IsWelcomeAmiibo() {
+    return g_active && (g_title_id.load() & ~0xF00ULL) == 0x0004000000198000ULL;
+}
+
 bool IsActive() {
     return g_active.load(std::memory_order_relaxed);
 }
@@ -124,6 +129,7 @@ void OnProgramLoaded(Core::System& system, u64 title_id, Kernel::Process& proces
     g_camera_sites.clear();
     PocketStacks::Reset();
     g_active = IsLeafTitle(title_id);
+    g_title_id = title_id;
     g_config.layout_enabled = g_active.load();
     if (!g_active)
         return;

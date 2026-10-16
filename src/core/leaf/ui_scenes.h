@@ -44,15 +44,49 @@ struct Element {
     /// the game changes (variable-width bubbles, the expanding map). `src` is the fallback.
     std::vector<std::string> bounds_of = {};
     float bounds_pad = 1.0f;
+    /// Measure only images found under `bounds_of` alone (when there are any): generic parts
+    /// shared with other screens would stretch the bounds over unrelated UI.
+    bool bounds_exclusive = false;
     Common::Rectangle<float> bounds_clamp{0.0f, 0.0f, 320.0f, 240.0f};
     /// Place with the same bottom-screen -> main-screen mapping as this (earlier) element, so
     /// a part sticking out of it stays attached.
     std::string same_transform_as = {};
     /// Put this element's right edge `offset_x` units left of that (earlier) element.
     std::string left_of = {};
+    /// Put this element's bottom edge `offset_y` units above that (earlier) element's top.
+    std::string above = {};
+    /// Only shown when `bounds_of` measured something (parts that exist in some game versions
+    /// only, e.g. Welcome amiibo's buttons).
+    bool requires_bounds = false;
     /// The anchor is a point of the 2D art on the 3DS top screen (5:3), and moves with the art
     /// when it is rescaled for 16:9 / 4:3 (x around the centre, y around the bottom edge).
     bool follow_art = false;
+    /// `src` is in TOP-screen pixels (400x240): a part of the top screen shown over the
+    /// bottom-screen parts (never touchable).
+    bool from_top = false;
+    /// With `from_top`: drawn exactly where that part is on the main screen (anchors ignored),
+    /// to bring it in front of bottom-screen parts covering it.
+    bool top_in_place = false;
+    /// Only shown while the scene's overlay is open (see SetOverlayOpen).
+    bool overlay = false;
+    /// 1 = touching this element also opens the overlay, 2 = it closes the overlay, 3 = it opens
+    /// it (2 and 3 are Leaf buttons, drawn by the frontend with `icon`, not game touches).
+    u8 action = 0;
+    u8 icon = 0; ///< Icon of a Leaf button
+    /// With IconRoundCorners: the radius (in `src` pixels) and how much the corners are dimmed.
+    float corner_radius = 0.0f;
+    float corner_shade = 0.0f;
+};
+
+/// Icons of Leaf's own buttons (drawn by the frontend).
+enum Icon : u8 {
+    IconNone = 0,
+    IconClose = 1,    ///< x
+    IconExpand = 2,   ///< show bigger
+    IconCollapse = 3, ///< back to the small view
+    /// Not a button: the frontend dims this region's corners outside a rounded rectangle, for
+    /// a rectangular crop of a rounded window over a dimmed backdrop.
+    IconRoundCorners = 4,
 };
 
 struct Scene {
@@ -88,6 +122,18 @@ struct Scene {
     /// Disappear at once instead of fading out (full-screen views: once the menu has closed the
     /// bottom screen already shows something else, which must not flash up at full size).
     bool instant_out = false;
+    /// Only while the scene's own textures are drawn inside the bottom screen (the game keeps
+    /// drawing the keyboard off-screen while it shows a preview of the text).
+    bool requires_onscreen = false;
+    /// Texture patterns of which one must be drawn on the TOP screen for the scene to be up
+    /// (pages that share their bottom screen with others, told apart by their top screen).
+    std::vector<std::string> requires_top = {};
+    /// With an overlay (elements marked `overlay`): A opens it too (e.g. a selected list entry's
+    /// details; not where A is the game's action button).
+    bool overlay_on_confirm = false;
+    /// While the overlay is open, the other elements are not shown (instead of staying behind
+    /// it), and the scene stays up while the player walks.
+    bool overlay_replaces = false;
 };
 
 /// Resolves scene texture patterns against the running game's textures. Called at boot.
@@ -97,8 +143,20 @@ void Shutdown();
 /// Reported by the frontend's input handling (circle pad / d-pad held).
 void SetMovementInput(bool moving);
 
-/// Reported by the frontend when A is pressed.
+/// Reported by the frontend when A is pressed (also opens a scene's overlay).
 void NotifyConfirm();
+
+/// Overlay of the current scene (e.g. the details of a selected cat task over the list).
+void SetOverlayOpen(bool open);
+bool OverlayOpen();
+struct Button {
+    u8 icon;
+    Common::Rectangle<u32> rect; ///< window pixels
+    float corner_radius;         ///< IconRoundCorners: window pixels
+    float corner_shade;
+};
+/// Leaf's own buttons currently on screen (open / close an overlay) for a window of this size.
+std::vector<Button> Buttons(u32 width, u32 height);
 
 /// Advances fades and returns this frame's regions for the given layout. Renderer thread.
 /// `forced_dt` (seconds) replaces the wall-clock frame time when >= 0 (tooling).
@@ -115,6 +173,9 @@ bool BottomToWindow(u32 width, u32 height, float bottom_x, float bottom_y, float
 
 /// True while a scene with this id is (at least half) visible.
 bool SceneVisible(const std::string& id);
+
+/// Archive and name of a layout texture key ("Dir/file.arc:name.bclim"), empty if unknown.
+std::string TextureName(u64 key);
 
 /// Ids of the currently active scenes (for the frontend / debugging).
 std::vector<std::string> ActiveScenes();

@@ -36,6 +36,13 @@ struct ScreenRegion {
     float key_tolerance = 0.0f; ///< >0 makes pixels near the key colour (magenta) transparent
     float key_softness = 0.0f;
     float scrim = 0.0f; ///< keyed pixels darken what is behind instead of being transparent
+    bool from_top = false; ///< src is a crop of the TOP screen (drawn over bottom-screen parts)
+    /// Leaf overlay: 1 = a touch here also opens it, 2 = closes it, 3 = opens it (2 and 3 are
+    /// Leaf buttons: their touches are not passed on to the game).
+    u8 action = 0;
+    u8 icon = 0; ///< Leaf button drawn by the frontend over this region (see Leaf::Ui::Icon)
+    float corner_radius = 0.0f; ///< Leaf rounded corners (window pixels), see Leaf::Ui::Icon
+    float corner_shade = 0.0f;
 };
 
 /// Describes the layout of the window framebuffer (size and top/bottom screen positions)

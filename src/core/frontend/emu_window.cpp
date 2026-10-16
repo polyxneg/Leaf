@@ -126,6 +126,13 @@ bool EmuWindow::TouchPressed(unsigned framebuffer_x, unsigned framebuffer_y) {
         const int region = Layout::MapRegionTouch(regions, framebuffer_x, framebuffer_y, region_x,
                                                   region_y, active_touch_region);
         if (region >= 0) {
+            if (regions[region].action == 2 || regions[region].action == 3) {
+                // Leaf's own buttons: not game touches.
+                Leaf::Ui::SetOverlayOpen(regions[region].action == 3);
+                return true;
+            }
+            if (regions[region].action == 1)
+                Leaf::Ui::SetOverlayOpen(true);
             active_touch_region = region;
             TouchPressedNormalized(region_x, region_y);
             return true;

@@ -13,6 +13,7 @@
 #include "video_core/pica/pica_core.h"
 #include "video_core/renderer_vulkan/renderer_vulkan.h"
 #include "core/leaf/leaf.h"
+#include "core/leaf/ui_probe.h"
 #include "core/leaf/ui_scenes.h"
 #include "video_core/renderer_vulkan/vk_memory_util.h"
 #include "video_core/renderer_vulkan/vk_shader_util.h"
@@ -270,10 +271,12 @@ void RendererVulkan::LoadFBToScreenInfo(const Pica::FramebufferConfig& framebuff
         right_eye = false;
     }
 
-    const PAddr framebuffer_addr =
+    PAddr framebuffer_addr =
         framebuffer.active_fb == 0
             ? (right_eye ? framebuffer.address_right1 : framebuffer.address_left1)
             : (right_eye ? framebuffer.address_right2 : framebuffer.address_left2);
+    if (Leaf::IsActive())
+        framebuffer_addr = Leaf::UiProbe::DisplayedBottom(framebuffer_addr);
 
     LOG_TRACE(Render_Vulkan, "0x{:08x} bytes from 0x{:08x}({}x{}), fmt {:x}",
               framebuffer.stride * framebuffer.height, framebuffer_addr, framebuffer.width.Value(),
@@ -1036,7 +1039,9 @@ void RendererVulkan::DrawBottomRegions(const Layout::FramebufferLayout& layout) 
         draw_info.leaf_params.y = region.key_tolerance;
         draw_info.leaf_params.z = region.key_softness;
         draw_info.leaf_params.w = region.scrim;
-        DrawSingleScreen(2, static_cast<float>(region.dst.left),
+        const u32 screen =
+            region.from_top ? static_cast<u32>(Settings::values.mono_render_option.GetValue()) : 2;
+        DrawSingleScreen(screen, static_cast<float>(region.dst.left),
                          static_cast<float>(region.dst.top),
                          static_cast<float>(region.dst.GetWidth()),
                          static_cast<float>(region.dst.GetHeight()),

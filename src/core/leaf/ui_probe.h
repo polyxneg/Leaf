@@ -11,6 +11,7 @@
 
 #include <array>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 #include "common/common_types.h"
@@ -35,7 +36,21 @@ void SetWantBounds(bool want);
 
 /// Called for every display transfer; transfers to a bottom-screen sized output identify the
 /// render target the game draws its bottom screen into.
-void OnDisplayTransfer(PAddr input, u32 output_width, u32 output_height);
+void OnDisplayTransfer(PAddr input, PAddr output, u32 input_size, u32 output_width,
+                       u32 output_height);
+
+/// While any of these textures is on the top screen, the bottom screen is one the game draws
+/// once and then keeps sending out without drawing (expecting the render target to still hold
+/// it): the last drawn bottom screen stays up instead of the undrawn ones.
+void SetHoldTopKeys(std::unordered_set<u64> keys);
+bool HoldBottom();
+
+/// Called when the game swaps the bottom-screen framebuffer it displays.
+void OnBottomSwap(PAddr shown);
+
+/// The framebuffer to display for `shown`: the last drawn bottom screen while the game shows
+/// one it sent without drawing in between redraws. Other addresses are returned unchanged.
+PAddr DisplayedBottom(PAddr shown);
 
 /// Resolves the textures drawn this frame. Called once per emulated frame on the emu thread.
 void EndFrame(Memory::MemorySystem& memory);
@@ -55,6 +70,9 @@ std::vector<u64> LastFrameKeys();
 
 /// Keys of every texture drawn to the top screen in the last frame.
 std::vector<u64> LastFrameTopKeys();
+
+/// Diagnostics: the last few display transfers (address, screen, textures and draws before).
+std::string RecentTransfers();
 
 /// Measured rectangles of the textures drawn to the bottom screen in the last frame, in
 /// bottom-screen pixels (320x240, y down). Only filled while WantBounds() is set.

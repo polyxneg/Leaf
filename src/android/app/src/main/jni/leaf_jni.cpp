@@ -5,6 +5,7 @@
 // JNI bridge for org.citra.citra_emu.leaf.LeafNative (Animal Crossing: New Leaf integration).
 
 #include <memory>
+#include <vector>
 #include <jni.h>
 #include "core/core.h"
 #include "core/file_sys/romfs_reader.h"
@@ -121,6 +122,28 @@ JNIEXPORT jboolean JNICALL Java_org_citra_citra_1emu_leaf_LeafNative_sceneVisibl
     const bool visible = Leaf::Ui::SceneVisible(chars);
     env->ReleaseStringUTFChars(id, chars);
     return visible;
+}
+
+/// Leaf's own buttons on screen as {icon, left, top, right, bottom, corner radius, corner shade}
+/// * n (window pixels).
+JNIEXPORT jfloatArray JNICALL Java_org_citra_citra_1emu_leaf_LeafNative_buttons(JNIEnv* env,
+                                                                                jobject) {
+    auto* window = GetLeafRenderWindow();
+    if (!window)
+        return env->NewFloatArray(0);
+    const auto& layout = window->GetFramebufferLayout();
+    std::vector<jfloat> values;
+    for (const auto& button : Leaf::Ui::Buttons(layout.width, layout.height)) {
+        values.insert(values.end(), {static_cast<jfloat>(button.icon),
+                                     static_cast<jfloat>(button.rect.left),
+                                     static_cast<jfloat>(button.rect.top),
+                                     static_cast<jfloat>(button.rect.right),
+                                     static_cast<jfloat>(button.rect.bottom),
+                                     button.corner_radius, button.corner_shade});
+    }
+    jfloatArray result = env->NewFloatArray(static_cast<jsize>(values.size()));
+    env->SetFloatArrayRegion(result, 0, static_cast<jsize>(values.size()), values.data());
+    return result;
 }
 
 /// Window position of a bottom-screen point as {x, y}, or null when it is not on screen.

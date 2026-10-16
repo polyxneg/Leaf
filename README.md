@@ -24,10 +24,13 @@ Azahar project or Nintendo**. Please report Leaf problems here, not to Azahar.
   need, each placed where it makes sense:
   - choice bubbles docked at the corner of the dialog box;
   - a town HUD with menu tabs, minimap and chat button, which appears with
-    the game's clock and fades out while you walk;
+    the game's clock and fades out while you walk; a button on the minimap
+    shows the live map large (you can keep walking) until you close it;
   - the text keyboard taking over the screen until you confirm;
   - the pockets and other menus filling the screen;
-  - maps shown during conversations placed above the dialog.
+  - maps shown during conversations placed above the dialog;
+  - Welcome amiibo's screens: the coupon machine, and the passport's cat
+    tasks as a full list whose details open on top when you pick a task.
 - **Touch only where it makes sense.** Only the placed UI elements respond to
   touch, so there are no ghost touches on the rest of the screen.
 - **Handheld controls.** Hardware controls are mapped automatically, and the

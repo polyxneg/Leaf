@@ -275,6 +275,10 @@ void GPU::SetBufferSwap(u32 screen_id, const Service::GSP::FrameBufferInfo& info
     framebuffer.stride = info.stride;
     framebuffer.format = info.format;
     framebuffer.active_fb = info.shown_fb;
+    if (screen_id == 1 && Leaf::IsActive()) {
+        Leaf::UiProbe::OnBottomSwap(framebuffer.active_fb == 0 ? framebuffer.address_left1
+                                                               : framebuffer.address_left2);
+    }
 
     // Notify debugger about the buffer swap.
     if (impl->debug_context) {
@@ -554,18 +558,28 @@ void GPU::MemoryTransfer() {
             DelayGenerator::GetCopyMode(config.IsInputVRAM(), config.IsOutputVRAM()), true,
             config.texture_copy.size);
     } else {
+        bool leaf_skip = false;
         if (Leaf::IsActive()) {
-            Leaf::UiProbe::OnDisplayTransfer(config.GetPhysicalInputAddress(),
-                                             config.output_width, config.output_height);
+            Leaf::UiProbe::OnDisplayTransfer(
+                config.GetPhysicalInputAddress(), config.GetPhysicalOutputAddress(),
+                config.input_width * config.input_height *
+                    Pica::BytesPerPixel(config.input_format),
+                config.output_width, config.output_height);
             // Bottom screen sent out without a single draw (a menu just closed): it is empty,
             // so it must be all key colour, not the top-screen image still in the target.
+            // Screens the game draws only once keep their last image instead: the target now
+            // holds the top screen, so this send is skipped and the drawn buffer stays shown.
             if (config.output_height == 320 && impl->pica.leaf_before_draw) {
                 auto before = std::move(impl->pica.leaf_before_draw);
                 impl->pica.leaf_before_draw = nullptr;
-                before();
+                if (Leaf::UiProbe::HoldBottom())
+                    leaf_skip = true;
+                else
+                    before();
             }
         }
-        if (right_eye_disabler->ShouldAllowDisplayTransfer(config.GetPhysicalInputAddress(),
+        if (!leaf_skip &&
+            right_eye_disabler->ShouldAllowDisplayTransfer(config.GetPhysicalInputAddress(),
                                                            config.input_height)) {
             if (!impl->rasterizer->AccelerateDisplayTransfer(config)) {
                 impl->sw_blitter->DisplayTransfer(config);

@@ -71,6 +71,9 @@ bool IsActive();
 /// Returns true for any regional release of Animal Crossing: New Leaf.
 bool IsLeafTitle(u64 title_id);
 
+/// True while the Welcome amiibo release (1.5, own title ID) is running.
+bool IsWelcomeAmiibo();
+
 /// Called by Core::System after the application process has been created but before it runs.
 void OnProgramLoaded(Core::System& system, u64 title_id, Kernel::Process& process);
 

@@ -213,11 +213,14 @@ bool WriteComposite(const std::string& path, const SwRenderer::ScreenInfo& top_i
         regions = Leaf::Ui::FrameRegions(layout, 0.05f);
     // Same maths as the present shaders: key every texel, then filter premultiplied results.
     const auto key_texel = [&](const Layout::ScreenRegion& r, int tx, int ty, float out[4]) {
-        tx = std::clamp(tx, 0, static_cast<int>(bw) - 1);
-        ty = std::clamp(ty, 0, static_cast<int>(bh) - 1);
+        // Regions normally show the bottom screen; `from_top` ones a part of the top screen.
+        const auto& image = r.from_top ? top : bottom;
+        const u32 iw = r.from_top ? tw : bw, ih = r.from_top ? th : bh;
+        tx = std::clamp(tx, 0, static_cast<int>(iw) - 1);
+        ty = std::clamp(ty, 0, static_cast<int>(ih) - 1);
         float c[3];
         for (int k = 0; k < 3; k++)
-            c[k] = bottom[(static_cast<size_t>(ty) * bw + tx) * 4 + k] / 255.0f;
+            c[k] = image[(static_cast<size_t>(ty) * iw + tx) * 4 + k] / 255.0f;
         float a = 1.0f;
         if (r.key_tolerance > 0.0f) {
             a = 1.0f - std::clamp(std::min(c[0], c[2]) - c[1], 0.0f, 1.0f);
@@ -252,8 +255,10 @@ bool WriteComposite(const std::string& path, const SwRenderer::ScreenInfo& top_i
             for (u32 x = r.dst.left; x < std::min(r.dst.right, width); x++) {
                 const float fx = (x - r.dst.left + 0.5f) / r.dst.GetWidth();
                 const float fy = (y - r.dst.top + 0.5f) / r.dst.GetHeight();
-                const float px = (r.src.left + fx * (r.src.right - r.src.left)) * bw - 0.5f;
-                const float py = (r.src.top + fy * (r.src.bottom - r.src.top)) * bh - 0.5f;
+                const float px =
+                    (r.src.left + fx * (r.src.right - r.src.left)) * (r.from_top ? tw : bw) - 0.5f;
+                const float py =
+                    (r.src.top + fy * (r.src.bottom - r.src.top)) * (r.from_top ? th : bh) - 0.5f;
                 const int ix = static_cast<int>(std::floor(px)), iy = static_cast<int>(std::floor(py));
                 const float tx = px - ix, ty = py - iy;
                 float c00[4], c10[4], c01[4], c11[4], pm[4];
@@ -272,6 +277,37 @@ bool WriteComposite(const std::string& path, const SwRenderer::ScreenInfo& top_i
                     const float col = a > 0.0001f ? pm[k] / a : 0.0f;
                     o[k] = col * a / std::max(total, 0.001f) * out_a + o[k] * (1 - out_a);
                 }
+            }
+        }
+    }
+    // Leaf's own buttons (drawn by the frontend on a device): a cream disc with a brown rim;
+    // rounded-corner masks dim the corners outside the rounded rectangle.
+    for (const auto& r : regions) {
+        if (r.icon == Leaf::Ui::IconRoundCorners) {
+            const float rad = r.corner_radius;
+            for (u32 y = r.dst.top; y < std::min(r.dst.bottom, height); y++) {
+                for (u32 x = r.dst.left; x < std::min(r.dst.right, width); x++) {
+                    const float cx = std::clamp(x + 0.5f, r.dst.left + rad, r.dst.right - rad);
+                    const float cy = std::clamp(y + 0.5f, r.dst.top + rad, r.dst.bottom - rad);
+                    if (std::hypot(x + 0.5f - cx, y + 0.5f - cy) > rad)
+                        for (int k = 0; k < 3; k++)
+                            out[(y * width + x) * 3 + k] *= 1.0f - r.corner_shade;
+                }
+            }
+            continue;
+        }
+        if (r.icon == 0 || !r.touchable)
+            continue;
+        const float cx = (r.dst.left + r.dst.right) / 2.0f, cy = (r.dst.top + r.dst.bottom) / 2.0f;
+        const float rad = std::min(r.dst.GetWidth(), r.dst.GetHeight()) / 2.0f;
+        for (u32 y = r.dst.top; y < std::min(r.dst.bottom, height); y++) {
+            for (u32 x = r.dst.left; x < std::min(r.dst.right, width); x++) {
+                const float d = std::hypot(x + 0.5f - cx, y + 0.5f - cy);
+                if (d > rad)
+                    continue;
+                const bool rim = d > rad * 0.86f;
+                const float c[3] = {rim ? 0.47f : 1.0f, rim ? 0.34f : 0.98f, rim ? 0.2f : 0.92f};
+                std::copy(c, c + 3, &out[(y * width + x) * 3]);
             }
         }
     }
@@ -447,10 +483,16 @@ int main(int argc, char** argv) {
             u64 n = 6;
             ss >> x >> y >> w >> h >> n;
             float nx, ny;
-            const int region =
-                Layout::MapRegionTouch(Leaf::Ui::LastRegions(w, h), x, y, nx, ny);
+            const auto regions = Leaf::Ui::LastRegions(w, h);
+            const int region = Layout::MapRegionTouch(regions, x, y, nx, ny);
             std::printf("wtap region %d -> %.1f %.1f\n", region, nx * 320.0f, ny * 240.0f);
-            if (region >= 0) {
+            // Overlay actions as in EmuWindow::TouchPressed.
+            if (region >= 0 && (regions[region].action == 2 || regions[region].action == 3)) {
+                Leaf::Ui::SetOverlayOpen(regions[region].action == 3);
+                run_frames(n);
+            } else if (region >= 0) {
+                if (regions[region].action == 1)
+                    Leaf::Ui::SetOverlayOpen(true);
                 window.TouchPressedNormalized(nx, ny);
                 run_frames(n);
                 window.TouchReleased();
@@ -531,10 +573,23 @@ int main(int argc, char** argv) {
                            r.Screen(VideoCore::ScreenId::Bottom), w, h);
             for (const auto& id : Leaf::Ui::ActiveScenes())
                 std::printf("scene %s\n", id.c_str());
+            if (std::getenv("LEAF_REGIONS"))
+                for (const auto& rg : Leaf::Ui::LastRegions(w, h))
+                    std::printf("region src %.1f %.1f %.1f %.1f dst %u %u %u %u a %.2f\n",
+                                rg.src.left * (rg.from_top ? 400 : 320), rg.src.top * 240,
+                                rg.src.right * (rg.from_top ? 400 : 320),
+                                rg.src.bottom * 240, rg.dst.left, rg.dst.top, rg.dst.right,
+                                rg.dst.bottom, rg.opacity);
         } else if (cmd == "probe") {
             std::printf("probe:");
             for (const u64 key : Leaf::UiProbe::LastFrameKeys())
                 std::printf(" %016llx", static_cast<unsigned long long>(key));
+            std::printf("\nprobe top:");
+            for (const u64 key : Leaf::UiProbe::LastFrameTopKeys()) {
+                const auto name = Leaf::Ui::TextureName(key);
+                if (!name.empty())
+                    std::printf(" %s", name.c_str());
+            }
             std::printf("\n");
         } else if (cmd == "bounds") {
             // bounds: measured bottom-screen rectangles of the last frame's textures

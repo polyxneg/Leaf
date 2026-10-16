@@ -15,6 +15,7 @@
 #include "video_core/renderer_opengl/post_processing_opengl.h"
 #include "video_core/renderer_opengl/renderer_opengl.h"
 #include "core/leaf/leaf.h"
+#include "core/leaf/ui_probe.h"
 #include "core/leaf/ui_scenes.h"
 #include "video_core/shader/generator/glsl_shader_gen.h"
 
@@ -278,10 +279,12 @@ void RendererOpenGL::LoadFBToScreenInfo(const Pica::FramebufferConfig& framebuff
     if (framebuffer.address_right1 == 0 || framebuffer.address_right2 == 0)
         right_eye = false;
 
-    const PAddr framebuffer_addr =
+    PAddr framebuffer_addr =
         framebuffer.active_fb == 0
             ? (!right_eye ? framebuffer.address_left1 : framebuffer.address_right1)
             : (!right_eye ? framebuffer.address_left2 : framebuffer.address_right2);
+    if (Leaf::IsActive())
+        framebuffer_addr = Leaf::UiProbe::DisplayedBottom(framebuffer_addr);
 
     LOG_TRACE(Render_OpenGL, "0x{:08x} bytes from 0x{:08x}({}x{}), fmt {:x}",
               framebuffer.stride * framebuffer.height, framebuffer_addr, framebuffer.width.Value(),
@@ -769,7 +772,11 @@ void RendererOpenGL::DrawBottomRegions(const Layout::FramebufferLayout& layout) 
             continue;
         glUniform4f(uniform_leaf_params, region.opacity, region.key_tolerance,
                     region.key_softness, region.scrim);
-        DrawSingleScreen(screen_infos[2], static_cast<float>(region.dst.left),
+        const auto& screen =
+            region.from_top
+                ? screen_infos[static_cast<int>(Settings::values.mono_render_option.GetValue())]
+                : screen_infos[2];
+        DrawSingleScreen(screen, static_cast<float>(region.dst.left),
                          static_cast<float>(region.dst.top),
                          static_cast<float>(region.dst.GetWidth()),
                          static_cast<float>(region.dst.GetHeight()),

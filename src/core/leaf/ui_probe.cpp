@@ -6,6 +6,7 @@
 #include <atomic>
 #include <mutex>
 #include <unordered_map>
+#include <fmt/format.h>
 #include "common/hash.h"
 #include "core/leaf/ui_probe.h"
 #include "core/memory.h"
@@ -55,6 +56,45 @@ std::vector<DrawnTexture> g_frame_textures;   ///< attributed to the bottom scre
 std::vector<DrawnTexture> g_top_textures;     ///< attributed to the top screen this frame
 std::unordered_map<PAddr, CachedKey> g_key_cache;
 u32 g_bottom_transfers = 0; ///< bottom-screen transfers since the last EndFrame
+// Diagnostics: the last display transfers (for the scene log).
+struct TransferNote {
+    PAddr input;
+    PAddr output;
+    bool bottom;
+    u32 textured;   ///< textures drawn since the previous transfer
+    u32 draws;      ///< draws of any kind since the previous transfer
+    PAddr targets[3]; ///< colour buffers drawn into
+};
+std::array<TransferNote, 8> g_notes{};
+std::size_t g_note_next = 0;
+u32 g_draws_since_transfer = 0;
+std::array<PAddr, 3> g_targets_since_transfer{};
+/// What was last sent into each bottom-screen framebuffer. Static screens (e.g. the coupon
+/// machine's messages) are redrawn only every few frames: in between the game displays buffers
+/// sent from the render target without drawing, which on hardware still holds the last bottom
+/// image but here holds the key colour. Those show the last drawn buffer instead.
+struct BottomBuffer {
+    std::vector<DrawnTexture> textures; ///< empty = sent with nothing drawn on it
+    u64 frame = 0;  ///< frame it was (last) sent in; sends in one frame add up
+    u64 serial = 0; ///< changes with every frame it is sent in
+};
+std::unordered_map<PAddr, BottomBuffer> g_bottom_buffers;
+u64 g_frame = 1;
+u64 g_serial = 0;
+PAddr g_shown_bottom = 0;     ///< bottom framebuffer the game currently displays
+PAddr g_drawn_bottom = 0;     ///< buffer the bottom screen was last drawn into
+u64 g_drawn_frame = 0;        ///< frame of that
+/// Frames an undrawn bottom screen may follow a drawn one and still repeat it (static screens
+/// redraw every third frame); longer means the screen really is empty now.
+constexpr u64 RepeatFrames = 4;
+/// Top-screen textures of screens whose bottom screen the game draws once and then only sends
+/// out again (see SetHoldTopKeys), and whether one is up.
+std::unordered_set<u64> g_hold_top_keys;
+bool g_hold = false;
+PAddr g_processed_bottom = 0; ///< buffer (and its serial) the current result comes from
+u64 g_processed_serial = 0;
+PAddr g_top_input = 0;
+u32 g_top_input_size = 0;
 
 // Shared with the frontend / scene logic.
 std::mutex g_mutex;
@@ -98,6 +138,15 @@ void OnDraw(PAddr color_buffer, bool texture_enabled, PAddr texture, u32 width, 
             u32 format, const std::array<float, 4>* bounds) {
     // The game renders both screens into a shared render target one after the other, so draws
     // are attributed to a screen by the display transfer that follows them.
+    g_draws_since_transfer++;
+    for (auto& t : g_targets_since_transfer) {
+        if (t == color_buffer)
+            break;
+        if (t == 0) {
+            t = color_buffer;
+            break;
+        }
+    }
     if (!texture_enabled)
         return;
     if (const auto it = g_pending_index.find(texture); it != g_pending_index.end()) {
@@ -120,13 +169,78 @@ void SetWantBounds(bool want) {
     g_want_bounds.store(want, std::memory_order_relaxed);
 }
 
-void OnDisplayTransfer(PAddr input, u32 output_width, u32 output_height) {
+void OnBottomSwap(PAddr shown) {
+    g_shown_bottom = shown;
+}
+
+void SetHoldTopKeys(std::unordered_set<u64> keys) {
+    g_hold_top_keys = std::move(keys);
+    g_hold = false;
+}
+
+bool HoldBottom() {
+    return g_hold;
+}
+
+PAddr DisplayedBottom(PAddr shown) {
+    const auto it = g_bottom_buffers.find(shown);
+    if (it == g_bottom_buffers.end() || !it->second.textures.empty() || g_drawn_bottom == 0 ||
+        (!g_hold && g_frame - g_drawn_frame > RepeatFrames))
+        return shown;
+    const auto drawn = g_bottom_buffers.find(g_drawn_bottom);
+    if (drawn == g_bottom_buffers.end() || drawn->second.textures.empty())
+        return shown; // overwritten since
+    return g_drawn_bottom;
+}
+
+void OnDisplayTransfer(PAddr input, PAddr output, u32 input_size, u32 output_width,
+                       u32 output_height) {
     // The bottom LCD output is 320 pixels tall (stored rotated, width padded to 256);
     // the top one is 400 (416 padded).
     const bool bottom = output_height == 320 || (output_width == 320 && output_height <= 256);
     auto& target = bottom ? g_frame_textures : g_top_textures;
-    if (bottom)
+    {
+        auto& note = g_notes[g_note_next++ % g_notes.size()];
+        note = {input, output, bottom, static_cast<u32>(g_pending_textures.size()),
+                g_draws_since_transfer,
+                {g_targets_since_transfer[0], g_targets_since_transfer[1],
+                 g_targets_since_transfer[2]}};
+        g_draws_since_transfer = 0;
+        g_targets_since_transfer = {};
+    }
+    if (bottom) {
         g_bottom_transfers++;
+        // Nothing drawn only means an empty screen when the input is the render target the top
+        // screen also uses; a bottom screen kept in its own buffer is just sent again unchanged.
+        const bool shared = input >= g_top_input && input < g_top_input + g_top_input_size;
+        if (g_pending_textures.empty() && !shared) {
+            g_pending_index.clear();
+            return;
+        }
+        auto& buffer = g_bottom_buffers[output];
+        if (buffer.frame != g_frame) {
+            buffer.textures.clear();
+            buffer.frame = g_frame;
+            buffer.serial = ++g_serial;
+        }
+        for (const auto& t : g_pending_textures) {
+            const auto seen = std::find_if(buffer.textures.begin(), buffer.textures.end(),
+                                           [&](const auto& f) { return f.address == t.address; });
+            if (seen != buffer.textures.end())
+                MergeBounds(*seen, t.has_bounds ? &t.bounds : nullptr);
+            else if (buffer.textures.size() < 512)
+                buffer.textures.push_back(t);
+        }
+        if (!buffer.textures.empty()) {
+            g_drawn_bottom = output;
+            g_drawn_frame = g_frame;
+        }
+        g_pending_textures.clear();
+        g_pending_index.clear();
+        return;
+    }
+    g_top_input = input;
+    g_top_input_size = input_size;
     for (const auto& t : g_pending_textures) {
         const auto seen = std::find_if(target.begin(), target.end(),
                                        [&](const auto& f) { return f.address == t.address; });
@@ -171,24 +285,51 @@ static std::vector<u64> KeysOf(Memory::MemorySystem& memory, std::vector<DrawnTe
 }
 
 void EndFrame(Memory::MemorySystem& memory) {
+    struct NextFrame {
+        ~NextFrame() {
+            g_frame++;
+        }
+    } next_frame;
     std::vector<u64> top_keys;
     const bool have_top = !g_top_textures.empty();
-    if (have_top)
+    if (have_top) {
         top_keys = KeysOf(memory, g_top_textures);
-    const bool bottom_sent = g_bottom_transfers > 0;
+        g_hold = std::any_of(top_keys.begin(), top_keys.end(),
+                             [](u64 key) { return g_hold_top_keys.contains(key); });
+    }
     g_bottom_transfers = 0;
-    if (g_frame_textures.empty()) {
+    // The bottom screen as displayed: the buffer the game shows (the last one sent if the
+    // game has not swapped any in yet).
+    PAddr shown = DisplayedBottom(g_shown_bottom);
+    if (!g_bottom_buffers.contains(shown)) {
+        u64 newest = 0;
+        for (const auto& [address, buffer] : g_bottom_buffers) {
+            if (buffer.serial > newest) {
+                newest = buffer.serial;
+                shown = address;
+            }
+        }
+    }
+    const auto it = g_bottom_buffers.find(shown);
+    if (it == g_bottom_buffers.end() ||
+        (shown == g_processed_bottom && it->second.serial == g_processed_serial)) {
+        // The displayed bottom screen did not change; keep its previous result.
         std::scoped_lock lock{g_mutex};
         if (have_top)
             g_last_top_keys = std::move(top_keys);
-        if (bottom_sent) {
-            // The bottom screen was sent out with nothing drawn on it (e.g. right after the
-            // keyboard closes): no UI is up any more.
-            g_visible.clear();
-            g_last_keys.clear();
-            g_last_bounds.clear();
-        }
-        // Otherwise the bottom screen was not updated this frame; keep its previous result.
+        return;
+    }
+    g_processed_bottom = shown;
+    g_processed_serial = it->second.serial;
+    g_frame_textures = it->second.textures;
+    if (g_frame_textures.empty()) {
+        // Shown with nothing drawn on it (e.g. after the keyboard closes): no UI is up.
+        std::scoped_lock lock{g_mutex};
+        if (have_top)
+            g_last_top_keys = std::move(top_keys);
+        g_visible.clear();
+        g_last_keys.clear();
+        g_last_bounds.clear();
         return;
     }
     std::vector<std::pair<bool, std::array<float, 4>>> measured;
@@ -239,6 +380,20 @@ std::vector<u64> LastFrameKeys() {
 std::vector<u64> LastFrameTopKeys() {
     std::scoped_lock lock{g_mutex};
     return g_last_top_keys;
+}
+
+std::string RecentTransfers() {
+    std::string out;
+    for (std::size_t i = 0; i < g_notes.size(); i++) {
+        const auto& n = g_notes[(g_note_next + i) % g_notes.size()];
+        if (n.input == 0)
+            continue;
+        out += fmt::format(" [{:08x}>{:08x} {} t{} d{} rt{:08x},{:08x}]", n.input, n.output,
+                           n.bottom ? "B" : "T", n.textured, n.draws, n.targets[0],
+                           n.targets[1]);
+    }
+    out += fmt::format(" shown {:08x}", g_shown_bottom);
+    return out;
 }
 
 std::vector<std::pair<u64, Common::Rectangle<float>>> LastFrameBounds() {

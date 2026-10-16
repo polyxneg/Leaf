@@ -9,6 +9,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.RectF
 import android.util.AttributeSet
 import android.view.MotionEvent
@@ -44,7 +45,23 @@ class LeafCursorView @JvmOverloads constructor(
     private var keyboardShown = false
     private val handPaint = Paint(Paint.FILTER_BITMAP_FLAG)
 
-    /** Polls whether the keyboard scene is up (it is driven by the emulated game). */
+    /** Leaf's own buttons (big map, closing a cat task's details): icon and view rectangle. */
+    private data class Button(
+        val icon: Int,
+        val rect: RectF,
+        val cornerRadius: Float,
+        val cornerShade: Float
+    )
+
+    private var buttons: List<Button> = emptyList()
+    private val closeFill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(255, 250, 235) }
+    private val closeLine = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        color = Color.rgb(120, 86, 50)
+    }
+
+    /** Polls the keyboard scene and overlays (they are driven by the emulated game). */
     private val keyboardPoll = object : Runnable {
         override fun run() {
             val shown = LeafKeyboardHand.active()
@@ -52,7 +69,17 @@ class LeafCursorView @JvmOverloads constructor(
                 keyboardShown = shown
                 invalidate()
             }
-            postDelayed(this, 120)
+            val raw = LeafNative.buttons()
+            val now = (0 until raw.size / 7).map { i ->
+                val v = i * 7
+                Button(raw[v].toInt(), RectF(raw[v + 1], raw[v + 2], raw[v + 3], raw[v + 4]),
+                    raw[v + 5], raw[v + 6])
+            }
+            if (now != buttons) {
+                buttons = now
+                invalidate()
+            }
+            postDelayed(this, if (buttons.isNotEmpty()) 50 else 120)
         }
     }
 
@@ -112,8 +139,65 @@ class LeafCursorView @JvmOverloads constructor(
 
     override fun onTouchEvent(event: MotionEvent): Boolean = false
 
+    private val cornerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK }
+    private val cornerPath = Path().apply { fillType = Path.FillType.EVEN_ODD }
+
+    /**
+     * Dims the corners of a rectangular crop outside the rounded window it shows, like the
+     * backdrop around it (the crop's corners would show the game undimmed).
+     */
+    private fun drawRoundCorners(canvas: Canvas, button: Button) {
+        cornerPath.reset()
+        cornerPath.addRect(button.rect, Path.Direction.CW)
+        cornerPath.addRoundRect(button.rect, button.cornerRadius, button.cornerRadius,
+            Path.Direction.CW)
+        cornerPaint.alpha = (button.cornerShade * 255f).toInt().coerceIn(0, 255)
+        canvas.drawPath(cornerPath, cornerPaint)
+    }
+
+    /** A round cream button in the game's colours: x (1), expand (2) or collapse (3). */
+    private fun drawButton(canvas: Canvas, button: Button) {
+        if (button.icon == ICON_ROUND_CORNERS) {
+            drawRoundCorners(canvas, button)
+            return
+        }
+        val rect = button.rect
+        val r = minOf(rect.width(), rect.height()) / 2f
+        val cx = rect.centerX()
+        val cy = rect.centerY()
+        canvas.drawCircle(cx + r * 0.06f, cy + r * 0.1f, r, shadow)
+        canvas.drawCircle(cx, cy, r, closeFill)
+        closeLine.strokeWidth = r * 0.12f
+        canvas.drawCircle(cx, cy, r - closeLine.strokeWidth / 2f, closeLine)
+        closeLine.strokeWidth = r * 0.16f
+        val d = r * 0.38f
+        when (button.icon) {
+            ICON_CLOSE -> {
+                canvas.drawLine(cx - d, cy - d, cx + d, cy + d, closeLine)
+                canvas.drawLine(cx - d, cy + d, cx + d, cy - d, closeLine)
+            }
+            ICON_EXPAND, ICON_COLLAPSE -> {
+                // Two corner arrows, pointing out (expand) or in (collapse).
+                val k = d * 0.55f
+                for (sx in listOf(-1f, 1f)) {
+                    val tipX = cx + sx * d
+                    val tipY = cy - sx * d
+                    val baseX = cx + sx * d * 0.15f
+                    val baseY = cy - sx * d * 0.15f
+                    val (cornerX, cornerY, dir) =
+                        if (button.icon == ICON_EXPAND) Triple(tipX, tipY, -sx)
+                        else Triple(baseX, baseY, sx)
+                    canvas.drawLine(baseX, baseY, tipX, tipY, closeLine)
+                    canvas.drawLine(cornerX, cornerY, cornerX + dir * k, cornerY, closeLine)
+                    canvas.drawLine(cornerX, cornerY, cornerX, cornerY - dir * k, closeLine)
+                }
+            }
+        }
+    }
+
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
+        buttons.forEach { drawButton(canvas, it) }
         if (keyboardShown && LeafSettings.gamepadConnected(context)) {
             drawKeyboardHand(canvas)
             return
@@ -126,5 +210,13 @@ class LeafCursorView @JvmOverloads constructor(
         canvas.drawCircle(x, y, r, fill)
         canvas.drawCircle(x, y, r, outline)
         canvas.drawCircle(x, y, 2.5f * density, outline)
+    }
+
+    private companion object {
+        // Leaf::Ui::Icon
+        const val ICON_CLOSE = 1
+        const val ICON_EXPAND = 2
+        const val ICON_COLLAPSE = 3
+        const val ICON_ROUND_CORNERS = 4
     }
 }

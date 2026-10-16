@@ -902,6 +902,20 @@ jboolean Java_org_citra_citra_1emu_NativeLibrary_onGamePadEvent([[maybe_unused]]
     }
     if (action && j_button == InputManager::N3DS_BUTTON_A)
         Leaf::Ui::NotifyConfirm();
+    // B closes a Leaf overlay (e.g. a cat task's details) instead of reaching the game, which
+    // would leave the screen behind it.
+    static bool leaf_b_for_overlay = false;
+    if (j_button == InputManager::N3DS_BUTTON_B) {
+        if (action && Leaf::Ui::OverlayOpen()) {
+            Leaf::Ui::SetOverlayOpen(false);
+            leaf_b_for_overlay = true;
+            return true;
+        }
+        if (!action && leaf_b_for_overlay) {
+            leaf_b_for_overlay = false;
+            return true;
+        }
+    }
     bool consumed{};
     if (action) {
         consumed = InputManager::ButtonHandler()->PressKey(j_button);

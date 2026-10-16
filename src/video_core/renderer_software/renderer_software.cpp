@@ -4,6 +4,8 @@
 
 #include "common/color.h"
 #include "core/core.h"
+#include "core/leaf/leaf.h"
+#include "core/leaf/ui_probe.h"
 #include "video_core/gpu.h"
 #include "video_core/pica/pica_core.h"
 #include "video_core/renderer_software/renderer_software.h"
@@ -39,8 +41,10 @@ void RendererSoftware::LoadFBToScreenInfo(int i, const Pica::ColorFill& color_fi
     const auto& framebuffer = pica.regs.framebuffer_config[fb_id];
     auto& info = screen_infos[i];
 
-    const PAddr framebuffer_addr =
+    PAddr framebuffer_addr =
         framebuffer.active_fb == 0 ? framebuffer.address_left1 : framebuffer.address_left2;
+    if (Leaf::IsActive())
+        framebuffer_addr = Leaf::UiProbe::DisplayedBottom(framebuffer_addr);
     const s32 bpp = Pica::BytesPerPixel(framebuffer.color_format);
     const u8* framebuffer_data = memory.GetPhysicalPointer(framebuffer_addr);
 
