@@ -337,72 +337,77 @@ public:
         return memory.Read32(g.category_table + category * 12 + 4);
     }
 
+    // Like the game's own merge, the ID's top bit and the top two flag bits are ignored when
+    // comparing items and kept as they are on the stack that receives the item. (Items shaken
+    // from a tree, for example, carry flag bits that dropped items don't.)
     Stack Classify(Item item) const {
         Stack s;
-        if ((item.id & 0x8000) || (item.flags & 0xC000))
-            return s;
-        const auto category = Category(item.id);
+        const u16 id = item.id & 0x7FFF;
+        const auto category = Category(id);
         if (!category)
             return s;
         const int count = (item.flags & 0x3FFF) + 1;
         switch (*category) {
         case CatFruit:
         case CatPerfectFruit:
-            if (item.flags || FruitBlocked())
+            if (FruitBlocked())
                 return s;
-            return {Type::Fruit, item.id, 1, FruitCap};
+            return {Type::Fruit, id, 1, FruitCap};
         case CatBasket:
         case CatPerfectBasket: {
             if (count < 2 || count > FruitCap || FruitBlocked())
                 return s;
             const u8 fruit = *category - BasketOffset;
-            return {Type::Fruit, static_cast<u16>(First(fruit) + (item.id - First(*category))),
-                    count, FruitCap};
+            return {Type::Fruit, static_cast<u16>(First(fruit) + (id - First(*category))), count,
+                    FruitCap};
         }
         case CatTurnips: {
             const int bunches = static_cast<int>(Count(CatTurnips));
-            const int amount = item.id - First(CatTurnips) + 1;
-            if (item.flags || amount < 1 || amount > bunches)
+            const int amount = id - First(CatTurnips) + 1;
+            if (amount < 1 || amount > bunches)
                 return s;
             return {Type::Turnips, 0, amount, bunches};
         }
         case CatBells: {
             const int first = First(CatBells);
-            if (item.flags)
-                return s;
-            if (item.id <= first + 8)
-                return {Type::BellsHundreds, 0, item.id - first + 1, BellsHundredsCap};
-            return {Type::BellsThousands, 0, item.id - (first + 8), BellsThousandsCap};
+            if (id <= first + 8)
+                return {Type::BellsHundreds, 0, id - first + 1, BellsHundredsCap};
+            return {Type::BellsThousands, 0, id - (first + 8), BellsThousandsCap};
         }
         case CatStationery:
             if (count > StationeryCap)
                 return s;
-            return {Type::Stationery, item.id, count, StationeryCap};
+            return {Type::Stationery, id, count, StationeryCap};
         default:
             return s;
         }
     }
 
-    Item Encode(const Stack& s, int amount) const {
+    /// `target` with its stack changed to `amount` (keeping the bits the game keeps).
+    Item Encode(Item target, const Stack& s, int amount) const {
+        const u16 kept_id = target.id & 0x8000;
+        const u16 kept_flags = target.flags & 0xC000;
+        const auto with = [&](u16 id, std::optional<u16> count) {
+            return Item{static_cast<u16>(kept_id | id),
+                        count ? static_cast<u16>(kept_flags | *count) : target.flags};
+        };
         switch (s.type) {
         case Type::Fruit: {
-            if (amount == 1)
-                return {s.key, 0};
             const u8 fruit = *Category(s.key);
             const u8 basket = fruit + BasketOffset;
-            return {static_cast<u16>(First(basket) + (s.key - First(fruit))),
-                    static_cast<u16>(amount - 1)};
+            return with(static_cast<u16>(First(basket) + (s.key - First(fruit))),
+                        static_cast<u16>(amount - 1));
         }
         case Type::Turnips:
-            return {static_cast<u16>(First(CatTurnips) + amount - 1), 0};
+            return with(static_cast<u16>(First(CatTurnips) + amount - 1), std::nullopt);
         case Type::BellsHundreds: // 10 x 100 bells is the first thousands bag
-            return {static_cast<u16>(First(CatBells) + amount - 1), 0};
+            return with(static_cast<u16>(First(CatBells) + amount - 1), std::nullopt);
         case Type::BellsThousands:
-            return {static_cast<u16>(First(CatBells) + 8 + amount), 0};
+            return with(static_cast<u16>(First(CatBells) + 8 + amount), std::nullopt);
         case Type::Stationery:
-            return {s.key, static_cast<u16>(amount - 1)};
+            return with(s.key, static_cast<u16>(amount - 1));
         default:
-            return {EmptyItem, 0};
+            return target;
         }
     }
 
@@ -428,7 +433,9 @@ std::vector<Target> MatchingStacks(const Rules& rules, Memory::MemorySystem& mem
                                    VAddr pockets, const Stack& picked) {
     std::vector<Target> targets;
     for (int i = 0; i < PocketSlots; i++) {
-        if (memory.Read8(pockets + LockOffset + i) != 0)
+        // 2 is set by the game for whole item kinds; anything else marks this one slot.
+        const u8 lock = memory.Read8(pockets + LockOffset + i);
+        if (lock != 0 && lock != 2)
             continue;
         const Stack s = rules.Classify(rules.Read(pockets + i * 4));
         if (s.type == picked.type && s.key == picked.key && s.amount < s.cap)
@@ -458,7 +465,8 @@ bool TryStack(Memory::MemorySystem& memory, VAddr pockets, VAddr item_addr) {
         if (left == 0)
             break;
         const int add = std::min(left, t.stack.cap - t.stack.amount);
-        const Item merged = rules.Encode(t.stack, t.stack.amount + add);
+        const Item merged =
+            rules.Encode(rules.Read(pockets + t.slot * 4), t.stack, t.stack.amount + add);
         memory.Write16(pockets + t.slot * 4, merged.id);
         memory.Write16(pockets + t.slot * 4 + 2, merged.flags);
         left -= add;
