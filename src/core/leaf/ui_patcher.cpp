@@ -137,10 +137,11 @@ const std::vector<ArcPatch>& Patches() {
          {},
          {{"blyt/wipe_circle.bclyt", 0.0f, 0.0f}}},
         {"Layout/common/caution.arc", false, {}, {}, {{"blyt/caution_T.bclyt", 0.0f, 0.0f}}},
+        // The saving spinner (save_wait.bclyt) is not fixed itself: the game places it with
+        // the transform of a pane in the message window, which already carries that window's
+        // fix (fixing both squeezed it twice).
         {"Layout/common/save_wait.arc", false, {}, {},
-         {{"blyt/save_wait.bclyt", 0.0f, 0.0f},
-          {"blyt/load_wait.bclyt", 0.0f, 0.0f},
-          {"blyt/load_wait_b.bclyt", 0.0f, 0.0f}}},
+         {{"blyt/load_wait.bclyt", 0.0f, 0.0f}, {"blyt/load_wait_b.bclyt", 0.0f, 0.0f}}},
         {"Layout/Board/board.arc", false, {}, {},
          {{"blyt/board_base_T.bclyt", 0.0f, 0.0f}, {"blyt/board_paper.bclyt", 0.0f, 0.0f}}},
         {"Layout/bookWin/m_book.arc", false, {}, {}, {{"blyt/m_book_T.bclyt", 0.0f, 0.0f}}},

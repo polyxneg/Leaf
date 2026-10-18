@@ -399,6 +399,8 @@ std::vector<Scene> BuildScenes() {
                 {"Menu/menu_tab.arc:my_men_btn_00.bclim"}};
         s.hidden_when_top = {"msgWin/msg_win.arc:"};
         s.shown_with_top = {"Menu/time_bel_win.arc:ny_tim_clkbase.bclim"}; // the clock plate
+        // In the player's house the clock goes away while the light switches.
+        s.shown_without_top_with = {"room/room.arc:ny_rom_lgt_00.bclim"};
         Element tabs;
         tabs.id = "hud_tabs";
         tabs.src = {0.0f, 0.0f, 210.0f, 25.0f}; // bag, designs, encyclopedia, friends
@@ -416,6 +418,9 @@ std::vector<Scene> BuildScenes() {
                          "Menu/map_lobby.arc:tc_map_list_win*", "Menu/map_exb.arc:tc_map_list_win*",
                          "Menu/map_village.arc:tc_map_listwin_arrow.bclim"};
         map.bounds_clamp = {0.0f, 26.0f, 320.0f, 240.0f}; // the menu tabs are above
+        // Outdoors only (indoors the house's own buttons are there).
+        map.requires_drawn = {"Menu/map_village.arc:", "Menu/map_island.arc:",
+                              "Menu/map_lobby.arc:", "Menu/map_exb.arc:"};
         map.anchor_x = 1.0f;
         map.anchor_y = 1.0f;
         map.pivot_x = 1.0f;
@@ -432,11 +437,48 @@ std::vector<Scene> BuildScenes() {
         tag.bounds_clamp = {0.0f, 0.0f, 320.0f, 26.0f};
         tag.same_transform_as = "hud_map";
         s.elements.push_back(tag);
-        // Chat button: on the bottom edge, just left of the map (also when the map is opened).
+        // Indoors (the player's house): the light switch in the map's corner, cut to its own
+        // outline (the house's storage and furniture buttons around it only show at times).
+        Element light;
+        light.id = "hud_light";
+        light.src = {118.0f, 54.0f, 202.0f, 186.0f}; // in the middle of the bottom screen
+        light.bounds_of = {"room/room.arc:ny_rom_lgt_00.bclim", "room/room.arc:ny_rom_lgh_01.bclim",
+                           "room/room.arc:my_rom_on.bclim", "room/room.arc:my_rom_off.bclim",
+                           "room/room.arc:ny_pct_leaf.bclim"};
+        light.bounds_pad = 2.0f;
+        light.requires_drawn = {"room/room.arc:ny_rom_lgt_00.bclim"};
+        light.touchable = false; // touched through the two halves below
+        light.anchor_x = 1.0f;
+        light.anchor_y = 1.0f;
+        light.pivot_x = 1.0f;
+        light.pivot_y = 1.0f;
+        light.offset_x = -6.0f;
+        light.offset_y = -6.0f;
+        light.scale = 0.45f;
+        s.elements.push_back(light);
+        // Its two halves switch the light on and off. The game opens the Internet browser from
+        // the middle of the switch (x 145-175, y 104-120, which needs a system update and
+        // leaves an invisible message waiting), so touches go to points clear of it.
+        Element light_on;
+        light_on.id = "hud_light_on";
+        light_on.src = {118.0f, 54.0f, 202.0f, 120.0f};
+        light_on.anchor_x = light_on.anchor_y = light_on.pivot_x = light_on.pivot_y = 0.0f;
+        light_on.same_transform_as = "hud_light";
+        light_on.opacity = 0.0f;
+        light_on.touch_x = 160.0f;
+        light_on.touch_y = 95.0f;
+        s.elements.push_back(light_on);
+        Element light_off = light_on;
+        light_off.id = "hud_light_off";
+        light_off.src = {118.0f, 120.0f, 202.0f, 186.0f};
+        light_off.touch_y = 137.0f;
+        s.elements.push_back(light_off);
+        // Chat button: on the bottom edge, just left of the map (also when the map is opened)
+        // or the light switch.
         Element chat;
         chat.id = "hud_chat";
         chat.src = {104.0f, 215.0f, 216.0f, 240.0f};
-        chat.left_of = "hud_map";
+        chat.left_of = {"hud_map", "hud_light"};
         chat.anchor_x = 1.0f;
         chat.anchor_y = 1.0f;
         chat.pivot_x = 1.0f;
@@ -465,9 +507,10 @@ std::vector<Scene> BuildScenes() {
         // up while walking), with a button to go back; the other HUD parts step aside.
         Element expand;
         expand.id = "hud_map_expand";
-        expand.src = {66.0f, 28.0f, 110.0f, 72.0f};
+        expand.src = {2.0f, 2.0f, 46.0f, 46.0f};
         expand.anchor_x = expand.anchor_y = expand.pivot_x = expand.pivot_y = 0.0f;
         expand.same_transform_as = "hud_map";
+        expand.src_relative = true; // the map moves left when its list opens
         expand.opacity = 0.0f;
         expand.action = 3;
         expand.icon = IconExpand;
@@ -500,9 +543,10 @@ std::vector<Scene> BuildScenes() {
         s.elements.push_back(big_tag);
         Element collapse;
         collapse.id = "hud_big_map_collapse";
-        collapse.src = {64.0f, 26.0f, 90.0f, 52.0f};
+        collapse.src = {0.0f, 0.0f, 26.0f, 26.0f};
         collapse.anchor_x = collapse.anchor_y = collapse.pivot_x = collapse.pivot_y = 0.0f;
         collapse.same_transform_as = "hud_big_map";
+        collapse.src_relative = true;
         collapse.opacity = 0.0f;
         collapse.overlay = true;
         collapse.action = 2;
@@ -537,9 +581,11 @@ struct SceneState {
     std::unordered_set<u64> hide_top_keys; ///< top-screen textures that hide the scene
     std::unordered_set<u64> excluded_keys; ///< bottom-screen textures that rule the scene out
     std::unordered_set<u64> show_top_keys; ///< top-screen textures the scene needs to show
+    std::unordered_set<u64> no_top_keys;   ///< bottom-screen textures that waive show_top_keys
     std::unordered_set<u64> required_top_keys; ///< top-screen textures the scene needs at all
     std::vector<std::unordered_set<u64>> required; ///< one key set per requirement
     std::vector<std::unordered_set<u64>> bounds_keys; ///< per element (Element::bounds_of)
+    std::vector<std::unordered_set<u64>> drawn_keys;  ///< per element (Element::requires_drawn)
     float alpha = 0.0f;
     float since_shown = 1e9f; ///< seconds since this scene was last on screen
     bool was_present = false;
@@ -549,7 +595,7 @@ struct SceneState {
 
 std::mutex g_mutex;
 std::vector<SceneState> g_scenes;
-SceneState g_fallback{FallbackScene(), {}, {}, {}, {}, {}, {}, {}, 0.0f, 1e9f};
+SceneState g_fallback{FallbackScene()};
 std::unordered_set<u64> g_ui_keys; ///< layout textures that indicate real UI
 std::unordered_set<u64> g_layout_keys; ///< every layout texture
 std::unordered_map<u64, std::string> g_key_names; ///< for the diagnostic log
@@ -689,7 +735,7 @@ void Initialize(Loader::AppLoader& loader) {
     g_fallback.alpha = 0.0f;
     g_scenes.clear();
     for (auto& scene : BuildScenes()) {
-        SceneState state{std::move(scene), {}, {}, {}, {}, {}, {}, {}, 0.0f, 1e9f};
+        SceneState state{std::move(scene)};
         for (const auto& element : state.scene.elements) {
             const auto matches = [&](const std::string& name) {
                 return std::any_of(element.bounds_of.begin(), element.bounds_of.end(),
@@ -709,6 +755,13 @@ void Initialize(Loader::AppLoader& loader) {
                 }
             }
             state.bounds_keys.push_back(std::move(keys));
+            std::unordered_set<u64> drawn;
+            for (const auto& [name, key] : textures) {
+                if (std::any_of(element.requires_drawn.begin(), element.requires_drawn.end(),
+                                [&](const auto& p) { return MatchesPattern(name, p); }))
+                    drawn.insert(key);
+            }
+            state.drawn_keys.push_back(std::move(drawn));
         }
         for (const auto& [key, names] : names_by_key) {
             if (state.scene.hidden_when_top.empty())
@@ -742,6 +795,12 @@ void Initialize(Loader::AppLoader& loader) {
             });
             if (exclusive)
                 state.show_top_keys.insert(key);
+        }
+        for (const auto& [name, key] : textures) {
+            if (std::any_of(state.scene.shown_without_top_with.begin(),
+                            state.scene.shown_without_top_with.end(),
+                            [&](const auto& p) { return MatchesPattern(name, p); }))
+                state.no_top_keys.insert(key);
         }
         for (const auto& [key, names] : names_by_key) {
             if (state.scene.excluded_by.empty())
@@ -939,8 +998,14 @@ std::vector<Layout::ScreenRegion> FrameRegions(const Layout::FramebufferLayout& 
         // An open overlay that replaces the scene (e.g. the big map) stays while walking.
         const bool keep_for_overlay = state.scene.overlay_replaces && g_overlay_open &&
                                       state.alpha > 0.0f;
+        const bool top_waived =
+            std::any_of(visible.begin(), visible.end(),
+                        [&](u64 key) { return state.no_top_keys.contains(key); });
         if (keep_for_overlay) {
             // (not hidden by walking or by the game hiding its clock)
+        } else if (top_waived) {
+            if (recently_moved)
+                show = false;
         } else if (!state.show_top_keys.empty()) {
             // Follows the game's own top-screen element (shown and hidden by the game); the
             // player moving still hides the scene immediately.
@@ -999,6 +1064,12 @@ std::vector<Layout::ScreenRegion> FrameRegions(const Layout::FramebufferLayout& 
                 }
                 element.touchable = false; // only the overlay takes touches while it is open
             }
+            if (!element.requires_drawn.empty() &&
+                std::none_of(visible.begin(), visible.end(),
+                             [&](u64 key) { return state.drawn_keys[j].contains(key); })) {
+                regions.push_back({}); // its textures are not on the bottom screen
+                continue;
+            }
             const auto& keys = state.bounds_keys[j];
             if (!keys.empty()) {
                 float l = 1e9f, t = 1e9f, r = -1e9f, b = -1e9f;
@@ -1021,21 +1092,42 @@ std::vector<Layout::ScreenRegion> FrameRegions(const Layout::FramebufferLayout& 
                     regions.push_back({}); // keeps element indices aligned; draws nothing
                     continue;
                 }
+            } else if (element.requires_bounds) {
+                regions.push_back({}); // this game version has none of its textures
+                continue;
             }
             // Copy the reference: `regions` may reallocate when this element is added.
             std::optional<Layout::ScreenRegion> same, beside, over;
-            if (!element.same_transform_as.empty())
-                if (const auto* p = placed(element.same_transform_as))
-                    same = *p;
-            if (!element.left_of.empty())
-                if (const auto* p = placed(element.left_of))
+            if (!element.same_transform_as.empty()) {
+                const auto* p = placed(element.same_transform_as);
+                if (!p) {
+                    regions.push_back({}); // attached to an element that is not shown
+                    continue;
+                }
+                same = *p;
+                if (element.src_relative) {
+                    // `src` is relative to that element's (possibly measured) top-left.
+                    const float dx = p->src.left * 320.0f, dy = p->src.top * 240.0f;
+                    element.src = {element.src.left + dx, element.src.top + dy,
+                                   element.src.right + dx, element.src.bottom + dy};
+                }
+            }
+            for (const auto& id : element.left_of) {
+                if (const auto* p = placed(id)) {
                     beside = *p;
+                    break;
+                }
+            }
             if (!element.above.empty())
                 if (const auto* p = placed(element.above))
                     over = *p;
             regions.push_back(PlaceElement(element, layout.top_screen, eased,
                                            same ? &*same : nullptr, beside ? &*beside : nullptr,
                                            over ? &*over : nullptr));
+            if (element.touch_x >= 0.0f) {
+                const float x = element.touch_x / 320.0f, y = element.touch_y / 240.0f;
+                regions.back().src = {x, y, x, y};
+            }
         }
     }
     // An overlay only exists while its scene is on screen.

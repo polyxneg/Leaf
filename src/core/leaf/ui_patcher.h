@@ -18,7 +18,7 @@ class AppLoader;
 namespace Leaf::UiPatcher {
 
 /// Bumped whenever the patch table changes so existing installs regenerate their mods.
-constexpr int PatchVersion = 20;
+constexpr int PatchVersion = 21;
 
 /// Writes patched layout archives to <user>/load/mods/<title>/romfs. Safe to call on every
 /// launch: does nothing when the mods for this ROM and PatchVersion already exist.

@@ -49,15 +49,25 @@ struct Element {
     bool bounds_exclusive = false;
     Common::Rectangle<float> bounds_clamp{0.0f, 0.0f, 320.0f, 240.0f};
     /// Place with the same bottom-screen -> main-screen mapping as this (earlier) element, so
-    /// a part sticking out of it stays attached.
+    /// a part sticking out of it stays attached. Not shown while that element is not.
     std::string same_transform_as = {};
-    /// Put this element's right edge `offset_x` units left of that (earlier) element.
-    std::string left_of = {};
+    /// With `same_transform_as`: `src` is relative to that element's top-left corner.
+    bool src_relative = false;
+    /// Touches anywhere on this element reach the game at this bottom-screen point (pixels),
+    /// e.g. to keep them off a hidden button next to the intended one. Negative: as placed.
+    float touch_x = -1.0f;
+    float touch_y = -1.0f;
+    /// Put this element's right edge `offset_x` units left of the first of these (earlier)
+    /// elements that is shown.
+    std::vector<std::string> left_of = {};
     /// Put this element's bottom edge `offset_y` units above that (earlier) element's top.
     std::string above = {};
     /// Only shown when `bounds_of` measured something (parts that exist in some game versions
     /// only, e.g. Welcome amiibo's buttons).
     bool requires_bounds = false;
+    /// Only shown while one of these textures is on the bottom screen (e.g. the map, which is
+    /// not there indoors). Never shown if the game version has none of them.
+    std::vector<std::string> requires_drawn = {};
     /// The anchor is a point of the 2D art on the 3DS top screen (5:3), and moves with the art
     /// when it is rescaled for 16:9 / 4:3 (x around the centre, y around the bottom edge).
     bool follow_art = false;
@@ -119,6 +129,10 @@ struct Scene {
     /// Texture patterns that must be drawn on the TOP screen for the scene to show (e.g. the
     /// town HUD appears together with the game's own clock plate).
     std::vector<std::string> shown_with_top = {};
+    /// Bottom-screen texture patterns while which `shown_with_top` is not needed (the game hides
+    /// its element at times there, e.g. the clock while the house light switches); the scene
+    /// then hides while the player walks instead.
+    std::vector<std::string> shown_without_top_with = {};
     /// Disappear at once instead of fading out (full-screen views: once the menu has closed the
     /// bottom screen already shows something else, which must not flash up at full size).
     bool instant_out = false;
