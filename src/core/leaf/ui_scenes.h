@@ -69,8 +69,9 @@ struct Element {
     /// not there indoors). Never shown if the game version has none of them.
     std::vector<std::string> requires_drawn = {};
     /// The anchor is a point of the 2D art on the 3DS top screen (5:3), and moves with the art
-    /// when it is rescaled for 16:9 / 4:3 (x around the centre, y around the bottom edge).
+    /// when it is rescaled for 16:9 / 4:3 (x around the centre, y around `art_pivot_y`).
     bool follow_art = false;
+    float art_pivot_y = 1.0f; ///< 1 = the art is rescaled around the bottom edge, 0.5 = centre
     /// `src` is in TOP-screen pixels (400x240): a part of the top screen shown over the
     /// bottom-screen parts (never touchable).
     bool from_top = false;

@@ -29,6 +29,8 @@ Azahar project or Nintendo**. Please report Leaf problems here, not to Azahar.
   - the text keyboard taking over the screen until you confirm;
   - the pockets and other menus filling the screen;
   - maps shown during conversations placed above the dialog;
+  - the bulletin board with the memo in full view, its arrows beside it and
+    Erase, Close and Write in a row below;
   - Welcome amiibo's screens: the coupon machine, and the passport's cat
     tasks as a full list whose details open on top when you pick a task.
 - **Touch only where it makes sense.** Only the placed UI elements respond to

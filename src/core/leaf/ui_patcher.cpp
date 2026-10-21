@@ -142,8 +142,24 @@ const std::vector<ArcPatch>& Patches() {
         // fix (fixing both squeezed it twice).
         {"Layout/common/save_wait.arc", false, {}, {},
          {{"blyt/load_wait.bclyt", 0.0f, 0.0f}, {"blyt/load_wait_b.bclyt", 0.0f, 0.0f}}},
-        {"Layout/Board/board.arc", false, {}, {},
+        // Bulletin board: the wooden board on the bottom screen is dropped; Leaf shows its
+        // buttons and arrows around the memo on the top screen (scene "board").
+        {"Layout/Board/board.arc",
+         false,
+         {
+             {"blyt/board_base_B.bclyt", "P_board_R", PaneOpKind::Hide}, // P_board_L inside
+         },
+         {},
          {{"blyt/board_base_T.bclyt", 0.0f, 0.0f}, {"blyt/board_paper.bclyt", 0.0f, 0.0f}}},
+        // Question balloon (e.g. the board's "erase this bulletin?"): its dimming layer would
+        // show as a dark box around the balloon; Leaf dims the main screen instead.
+        {"Layout/common/cmn_dialog_A.arc",
+         false,
+         {
+             {"blyt/cmn_dialog_A.bclyt", "P_black", PaneOpKind::Hide},
+         },
+         {},
+         {}},
         {"Layout/bookWin/m_book.arc", false, {}, {}, {{"blyt/m_book_T.bclyt", 0.0f, 0.0f}}},
         {"Layout/catalog/catalogue.arc", false, {}, {}, {{"blyt/ctlg_T.bclyt", 0.0f, 0.0f}}},
         {"Layout/passWin/m_psprt.arc", false, {}, {}, {{"blyt/bdg_T.bclyt", 0.0f, 0.0f}}},

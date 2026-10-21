@@ -288,6 +288,98 @@ std::vector<Scene> BuildScenes() {
         scenes.push_back(std::move(s));
     }
 
+    // Bulletin board: the memo (top screen) stays in view. Its arrows sit at its left and right
+    // edges, and Erase, Close and Write in a row at the bottom. The board's slider is left
+    // out, and its wooden board is removed by the layout patch.
+    {
+        Scene s{"board", {"Board/board.arc:"}, {}, false, 3,
+                {"Board/board.arc:tc_board_btn_00.bclim"}}; // not while writing a memo
+        const auto part = [](const char* id, Common::Rectangle<float> src) {
+            Element e;
+            e.id = id;
+            e.src = src;
+            return e;
+        };
+        // The memo spans x 65-335 of the top screen's 2D art.
+        Element prev = part("board_prev", {20.0f, 29.0f, 54.0f, 95.0f});
+        prev.anchor_x = 65.0f / 400.0f;
+        prev.anchor_y = 0.5f;
+        prev.pivot_x = 1.0f;
+        prev.pivot_y = 0.5f;
+        prev.offset_x = -4.0f;
+        prev.follow_art = true;
+        prev.art_pivot_y = 0.5f; // the board's art is rescaled around the screen centre
+        prev.scale = 0.8f;
+        s.elements.push_back(prev);
+        Element next = part("board_next", {268.0f, 29.0f, 302.0f, 95.0f});
+        next.anchor_x = 335.0f / 400.0f;
+        next.anchor_y = 0.5f;
+        next.pivot_x = 0.0f;
+        next.pivot_y = 0.5f;
+        next.offset_x = 4.0f;
+        next.follow_art = true;
+        next.art_pivot_y = 0.5f;
+        next.scale = 0.8f;
+        s.elements.push_back(next);
+        constexpr float CloseScale = 0.9f, ButtonScale = 0.72f;
+        constexpr float CloseHalfWidth = (225.0f - 96.0f) / 2.0f * CloseScale;
+        Element close = part("board_close", {96.0f, 191.0f, 225.0f, 227.0f});
+        close.anchor_x = 0.5f;
+        close.anchor_y = 1.0f;
+        close.pivot_x = 0.5f;
+        close.pivot_y = 1.0f;
+        close.offset_y = -4.0f;
+        close.scale = CloseScale;
+        s.elements.push_back(close);
+        Element erase = part("board_erase", {64.0f, 96.0f, 148.0f, 166.0f});
+        erase.anchor_x = 0.5f;
+        erase.anchor_y = 1.0f;
+        erase.pivot_x = 1.0f;
+        erase.pivot_y = 1.0f;
+        erase.offset_x = -(CloseHalfWidth + 4.0f);
+        erase.offset_y = -2.0f;
+        erase.scale = ButtonScale;
+        s.elements.push_back(erase);
+        Element write = erase;
+        write.id = "board_write";
+        write.src = {172.0f, 96.0f, 256.0f, 166.0f};
+        write.pivot_x = 0.0f;
+        write.offset_x = CloseHalfWidth + 4.0f;
+        s.elements.push_back(write);
+        scenes.push_back(std::move(s));
+    }
+
+    // The board's questions (erase this bulletin? ...): the game's balloon covers its whole
+    // bottom screen, so it is shown whole, along the bottom edge in front of the memo, instead
+    // of the board's arrows and buttons. (Welcome amiibo shares all of the balloon's images
+    // with other screens, so it is told apart by the board's buttons under it.)
+    {
+        Scene s{"board_dialog",
+                {"Board/board.arc:"},
+                {},
+                false,
+                4,
+                {"Board/board.arc:tc_board_btn_00.bclim",
+                 "common/cmn_dialog_A.arc:my_cmn_ballon_XXL.bclim"}};
+        Element backdrop;
+        backdrop.id = "board_dialog_backdrop";
+        backdrop.backdrop = true;
+        backdrop.scrim = 0.45f;
+        backdrop.touchable = false;
+        s.elements.push_back(backdrop);
+        Element dialog;
+        dialog.id = "board_dialog";
+        dialog.src = {0.0f, 6.0f, 320.0f, 240.0f};
+        dialog.anchor_x = 0.5f;
+        dialog.anchor_y = 1.0f;
+        dialog.pivot_x = 0.5f;
+        dialog.pivot_y = 1.0f;
+        dialog.offset_y = -4.0f;
+        dialog.scale = 0.75f;
+        s.elements.push_back(dialog);
+        scenes.push_back(std::move(s));
+    }
+
     // Welcome amiibo coupon machine: its menu fills the main screen (its scenery is removed, so
     // the top screen shows around the buttons), with the coupon count pill from the top screen
     // in the top-right corner (layout patch).
@@ -663,7 +755,7 @@ Layout::ScreenRegion PlaceElement(const Element& e, const Common::Rectangle<u32>
     if (e.follow_art) {
         const auto [art_x, art_y] = ArtScale();
         anchor_x = 0.5f + (anchor_x - 0.5f) * art_x;
-        anchor_y = 1.0f - (1.0f - anchor_y) * art_y;
+        anchor_y = e.art_pivot_y + (anchor_y - e.art_pivot_y) * art_y;
     }
     const float src_w = e.src.right - e.src.left;
     const float src_h = e.src.bottom - e.src.top;
