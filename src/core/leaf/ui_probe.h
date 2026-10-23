@@ -58,6 +58,9 @@ void EndFrame(Memory::MemorySystem& memory);
 /// Hash used to identify a texture: XXH3-64 of its pixel data mixed with its dimensions.
 u64 TextureKey(const u8* data, std::size_t size, u32 width, u32 height);
 
+/// Bits per pixel of a PICA texture format (0 if unknown).
+u32 BitsPerPixel(u32 format);
+
 /// Registers a known UI texture (computed from the user's ROM) under a stable numeric id.
 void RegisterTexture(u64 key, u32 id);
 void ClearRegisteredTextures();

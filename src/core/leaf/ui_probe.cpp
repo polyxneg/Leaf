@@ -105,32 +105,6 @@ std::vector<u64> g_last_top_keys;
 std::vector<std::pair<u64, Common::Rectangle<float>>> g_last_bounds;
 std::atomic<bool> g_want_bounds{false};
 
-u32 BitsPerPixel(u32 format) {
-    switch (format) {
-    case 0: // RGBA8
-        return 32;
-    case 1: // RGB8
-        return 24;
-    case 2: // RGB5A1
-    case 3: // RGB565
-    case 4: // RGBA4
-    case 5: // IA8
-    case 6: // RG8 / HILO8
-        return 16;
-    case 7: // I8
-    case 8: // A8
-    case 9: // IA4
-        return 8;
-    case 10: // I4
-    case 11: // A4
-    case 12: // ETC1
-        return 4;
-    case 13: // ETC1A4
-        return 8;
-    default:
-        return 0;
-    }
-}
 
 } // namespace
 
@@ -251,6 +225,33 @@ void OnDisplayTransfer(PAddr input, PAddr output, u32 input_size, u32 output_wid
     }
     g_pending_textures.clear();
     g_pending_index.clear();
+}
+
+u32 BitsPerPixel(u32 format) {
+    switch (format) {
+    case 0: // RGBA8
+        return 32;
+    case 1: // RGB8
+        return 24;
+    case 2: // RGB5A1
+    case 3: // RGB565
+    case 4: // RGBA4
+    case 5: // IA8
+    case 6: // RG8 / HILO8
+        return 16;
+    case 7: // I8
+    case 8: // A8
+    case 9: // IA4
+        return 8;
+    case 10: // I4
+    case 11: // A4
+    case 12: // ETC1
+        return 4;
+    case 13: // ETC1A4
+        return 8;
+    default:
+        return 0;
+    }
 }
 
 u64 TextureKey(const u8* data, std::size_t size, u32 width, u32 height) {

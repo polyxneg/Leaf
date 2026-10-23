@@ -2,6 +2,7 @@
 // Licensed under GPLv2 or any later version
 // Refer to the misc/licenses/gplv2.txt file included.
 
+#include <cstring>
 #include <sstream>
 #include <fmt/format.h>
 #include "common/file_util.h"
@@ -453,12 +454,50 @@ void EnsureMods(const std::string& rom_path) {
         LOG_WARNING(Core, "Leaf: UI mods not generated: {}", error);
 }
 
+namespace {
+
+// Adds the image textures (TXOB) of a CGFX file as "<path>:<texture name>".
+void AddCgfxTextureKeys(std::unordered_map<std::string, u64>& keys, const std::string& path,
+                        const std::vector<u8>& file) {
+    const auto u32_at = [&](std::size_t o) {
+        u32 v;
+        std::memcpy(&v, file.data() + o, sizeof(v));
+        return v;
+    };
+    for (std::size_t i = 4; i + 0x40 <= file.size(); i += 4) {
+        if (std::memcmp(file.data() + i, "TXOB", 4) != 0 || u32_at(i - 4) != 0x20000011)
+            continue; // not an image texture
+        const std::size_t txob = i - 4;
+        const std::size_t name_at = txob + 0xC + u32_at(txob + 0xC);
+        const u32 format = u32_at(txob + 0x34);
+        const std::size_t image = txob + 0x38 + u32_at(txob + 0x38);
+        if (name_at >= file.size() || image + 0x10 > file.size())
+            continue;
+        const u32 height = u32_at(image), width = u32_at(image + 4);
+        const std::size_t data = image + 0xC + u32_at(image + 0xC);
+        const std::size_t size = static_cast<std::size_t>(width) * height *
+                                 UiProbe::BitsPerPixel(format) / 8;
+        if (size == 0 || data + size > file.size())
+            continue;
+        const auto* name = reinterpret_cast<const char*>(file.data() + name_at);
+        keys[path + ":" + std::string(name, strnlen(name, file.size() - name_at))] =
+            UiProbe::TextureKey(file.data() + data, size, width, height);
+    }
+}
+
+} // namespace
+
 std::unordered_map<std::string, u64> BuildTextureKeys(Loader::AppLoader& loader) {
     std::unordered_map<std::string, u64> keys;
     std::shared_ptr<FileSys::RomFSReader> romfs;
     if (loader.ReadRomFS(romfs) != Loader::ResultStatus::Success || !romfs)
         return keys;
     for (const auto& [path, entry] : ListRomFS(*romfs)) {
+        // Stationery, shown on the bottom screen when previewed in a shop.
+        if (path.starts_with("Item/Model/letter_") && path.ends_with(".bcres")) {
+            AddCgfxTextureKeys(keys, path, ReadRomFSFile(*romfs, entry));
+            continue;
+        }
         if (!path.starts_with("Layout/") || !path.ends_with(".arc"))
             continue;
         const auto arc = ReadRomFSFile(*romfs, entry);

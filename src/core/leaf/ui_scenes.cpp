@@ -380,6 +380,27 @@ std::vector<Scene> BuildScenes() {
         scenes.push_back(std::move(s));
     }
 
+    // Stationery previewed in a shop ("Show me"): the game shows the paper alone on the bottom
+    // screen until B, so it is shown over the whole main screen meanwhile.
+    {
+        Scene s{"letter_preview", {"Item/Model/letter_*"}, {}, false, 2};
+        s.excluded_by = {"Letter/"}; // writing or reading a letter
+        s.instant_out = true;
+        Element backdrop;
+        backdrop.id = "letter_preview_backdrop";
+        backdrop.backdrop = true;
+        backdrop.scrim = 0.45f;
+        backdrop.touchable = false;
+        s.elements.push_back(backdrop);
+        Element paper;
+        paper.id = "letter_preview";
+        paper.src = {0.0f, 0.0f, 320.0f, 240.0f};
+        paper.anchor_x = paper.anchor_y = paper.pivot_x = paper.pivot_y = 0.5f;
+        paper.fit = true;
+        s.elements.push_back(paper);
+        scenes.push_back(std::move(s));
+    }
+
     // Welcome amiibo coupon machine: its menu fills the main screen (its scenery is removed, so
     // the top screen shows around the buttons), with the coupon count pill from the top screen
     // in the top-right corner (layout patch).
