@@ -11,6 +11,7 @@
 #include "core/arm/arm_interface.h"
 #include "core/core.h"
 #include "core/hle/kernel/process.h"
+#include "core/leaf/code_search.h"
 #include "core/leaf/leaf.h"
 #include "core/leaf/pocket_stacks.h"
 #include "core/memory.h"
@@ -19,15 +20,7 @@ namespace Leaf::PocketStacks {
 
 namespace {
 
-constexpr u32 BranchMask = 0xFF000000;
-constexpr u32 OffsetMask = 0xFFFFF000; // ldr/str immediate offset, add immediate
-constexpr u32 Exact = 0xFFFFFFFF;
-
-struct Word {
-    u32 value;
-    u32 mask = Exact;
-};
-using Signature = std::vector<Word>;
+using namespace CodeSearch;
 
 /// Pockets item: id (bit 15 is a flag) and a flag word whose low 14 bits hold "count - 1" for
 /// stackable items.
@@ -81,69 +74,8 @@ struct Located {
 
 Located g;
 
-std::vector<VAddr> FindAll(const std::vector<u32>& code, VAddr base, const Signature& sig) {
-    std::vector<VAddr> hits;
-    for (std::size_t i = 0; i + sig.size() <= code.size(); i++) {
-        bool match = true;
-        for (std::size_t k = 0; k < sig.size() && match; k++)
-            match = (code[i + k] & sig[k].mask) == (sig[k].value & sig[k].mask);
-        if (match)
-            hits.push_back(base + static_cast<VAddr>(i * 4));
-    }
-    return hits;
-}
-
-VAddr BranchTarget(VAddr at, u32 ins) {
-    s32 offset = static_cast<s32>(ins << 8) >> 8;
-    return at + 8 + static_cast<VAddr>(offset * 4);
-}
-
-u32 Branch(u32 cond_op, VAddr at, VAddr target) {
-    return cond_op | (((target - (at + 8)) >> 2) & 0x00FFFFFF);
-}
-
-/// Literal loaded by `ldr rX, [pc, #imm]` at `at`.
-std::optional<VAddr> LiteralAddress(VAddr at, u32 ins) {
-    if ((ins & 0x0F7F0000) != 0x051F0000)
-        return std::nullopt;
-    const u32 imm = ins & 0xFFF;
-    return (ins & (1u << 23)) ? at + 8 + imm : at + 8 - imm;
-}
-
-class CodeView {
-public:
-    CodeView(Core::System& system, Kernel::Process& process) {
-        const auto& seg = process.codeset->CodeSegment();
-        base = seg.addr;
-        words.resize(seg.size / 4);
-        system.Memory().ReadBlock(process, base, words.data(), words.size() * 4);
-    }
-    bool Contains(VAddr addr) const {
-        return addr >= base && addr < base + words.size() * 4;
-    }
-    u32 At(VAddr addr) const {
-        return Contains(addr) ? words[(addr - base) / 4] : 0;
-    }
-    std::optional<VAddr> Unique(const Signature& sig, const char* what) const {
-        const auto hits = FindAll(words, base, sig);
-        if (hits.size() != 1) {
-            LOG_WARNING(Core, "Leaf: auto-stack: {} found {} times", what, hits.size());
-            return std::nullopt;
-        }
-        return hits[0];
-    }
-
-    VAddr base = 0;
-    std::vector<u32> words;
-};
-
-/// Value of a literal that may live in .rodata (outside the code view).
-u32 ReadLiteral(Core::System& system, Kernel::Process& process, VAddr addr) {
-    return system.Memory().Read32(process, addr);
-}
-
 bool LocateImpl(Core::System& system, Kernel::Process& process) {
-    const CodeView code(system, process);
+    const CodeView code(system, process, "auto-stack");
     Located found;
 
     // GiveItem(pockets, item, lock, notify): copies into the first free slot, then notifies.

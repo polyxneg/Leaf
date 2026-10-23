@@ -47,4 +47,19 @@ object LeafNative {
 
     /** The game's pointing-hand cursor from the user's ROM, 32x32 ARGB, or null. */
     external fun getHandCursor(pressed: Boolean): IntArray?
+
+    /** A pockets-screen item icon (icn_<index>) from the user's ROM, 32x32 ARGB, or null. */
+    external fun getItemIcon(index: Int): IntArray?
+
+    /**
+     * The tool ring's tools: {slot, kind, variant, icon} each, slot -1 = in hand. Empty while
+     * the ring can't be used (the player isn't standing still in the open).
+     */
+    external fun toolRing(): IntArray
+
+    /** The tool ring is shown: the HUD (Leaf's and the game's clock) is left out meanwhile. */
+    external fun setToolRingOpen(open: Boolean)
+
+    /** Takes out the tool in pocket [slot], or puts away the one in hand for -1. */
+    external fun selectTool(slot: Int)
 }

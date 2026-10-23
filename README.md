@@ -39,6 +39,14 @@ Azahar project or Nintendo**. Please report Leaf problems here, not to Azahar.
 - **Handheld controls.** Hardware controls are mapped automatically, and the
   on-screen controls hide when a gamepad is connected. A D-pad pointer lets
   you type on the keyboard without touching the screen.
+- **Tool ring.** Press R2 while standing still to see the tools in your
+  pockets around your character, like in New Horizons: point with the left
+  stick (or the D-pad), A takes a tool out, A on the one in your hand puts it
+  away, B closes the ring. Shovels, nets, rods, axes, watering cans and
+  slingshots (all tiers) and the megaphone are shown. The switch is done by
+  the game's own "equip" routine, the one the pockets screen uses, so saves
+  contain nothing the unmodified game wouldn't write itself. Works with the
+  original release and with Welcome amiibo.
 - **Smooth play.** The emulator's pacing matches your display's refresh rate,
   the game gets extra emulated CPU headroom, and shaders compile in the
   background. Rendering can be set to native, 2x or 3x resolution.

@@ -8,6 +8,7 @@
 #include <unordered_map>
 #include <fmt/format.h>
 #include "common/hash.h"
+#include "core/leaf/leaf.h"
 #include "core/leaf/ui_probe.h"
 #include "core/memory.h"
 
@@ -145,6 +146,34 @@ void SetWantBounds(bool want) {
 
 void OnBottomSwap(PAddr shown) {
     g_shown_bottom = shown;
+}
+
+static std::unordered_set<u64> g_ring_hidden_keys; ///< the clock plate
+static std::unordered_map<PAddr, CachedKey> g_skip_cache;
+
+void SetRingHiddenKeys(std::unordered_set<u64> keys) {
+    g_ring_hidden_keys = std::move(keys);
+    g_skip_cache.clear();
+}
+
+bool SkipDraw(const u8* data, PAddr texture, u32 width, u32 height, u32 format) {
+    if (!GetConfig().tool_ring_open.load(std::memory_order_relaxed))
+        return false;
+    // Font sheets are A4 or IA4 (the number fonts too).
+    if (format == 11 || format == 9)
+        return true;
+    const std::size_t size = static_cast<std::size_t>(width) * height * BitsPerPixel(format) / 8;
+    if (!data || size == 0 || g_ring_hidden_keys.empty())
+        return false;
+    const u64 sample = Common::ComputeHash64(data, std::min<std::size_t>(size, 64));
+    auto it = g_skip_cache.find(texture);
+    if (it == g_skip_cache.end() || it->second.sample != sample) {
+        it = g_skip_cache
+                 .insert_or_assign(texture,
+                                   CachedKey{sample, TextureKey(data, size, width, height)})
+                 .first;
+    }
+    return g_ring_hidden_keys.contains(it->second.key);
 }
 
 void SetHoldTopKeys(std::unordered_set<u64> keys) {

@@ -52,6 +52,10 @@ struct Config {
     /// Auto-stack on pickup (see pocket_stacks.h). Off by default; off = the original game.
     std::atomic<bool> auto_stack{false};
 
+    /// The tool ring is open (see tool_ring.h): the HUD (Leaf's elements and the game's clock
+    /// plate) is left out meanwhile.
+    std::atomic<bool> tool_ring_open{false};
+
     /// Refresh rate of the device display (Hz), 0 if unknown. Used to pace emulation so every
     /// display refresh gets a new frame (see PaceScale).
     std::atomic<float> display_refresh{0.0f};

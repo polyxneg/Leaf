@@ -34,7 +34,7 @@
     <string name="leaf_nintendo_layout">Controller reports A on the right (Nintendo layout)</string>
     <string name="leaf_detect_layout">Detect layout</string>
     <string name="leaf_detect_layout_message">Press the face button on the RIGHT side of your controller (where A is on a 3DS).</string>
-    <string name="leaf_controller_hint">Right stick moves the cursor, R2 or R3 taps a menu element. L2 or L3 shows the touch screen for screens that are not remastered yet.</string>
+    <string name="leaf_controller_hint">R2 opens the tool ring while you stand still: point with the left stick, A takes a tool out or puts the one in hand away, B closes it.</string>
     <string name="leaf_gameplay_header">Gameplay</string>
     <string name="leaf_auto_stack">Stack items when picking them up</string>
     <string name="leaf_auto_stack_hint">Fruit, turnips, bell bags and stationery go onto a matching stack in your pockets, like when you drag them together yourself. A full pocket can still take an item that fits on a stack. Saves stay exactly as the game writes them.</string>
@@ -42,4 +42,5 @@
     <string name="leaf_storage_message">Leaf reads your game and keeps your town in the folder you chose. Android needs "All files access" for the fast storage path used by the emulator core. Turn it on for Leaf on the next screen.</string>
     <string name="leaf_storage_grant">Open settings</string>
     <string name="leaf_advanced">Advanced emulator settings</string>
+    <string name="leaf_tool_ring_put_away">A: put away</string>
 </resources>

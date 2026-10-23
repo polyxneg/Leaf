@@ -444,7 +444,9 @@ class EmulationActivity : AppCompatActivity() {
         if (event.actionMasked == MotionEvent.ACTION_CANCEL) {
             return true
         }
-        LeafSession.onMotionEvent(event)
+        if (LeafSession.onMotionEvent(event)) {
+            return true
+        }
         val input = event.device
         val motions = input.motionRanges
         val axisValuesCirclePad = floatArrayOf(0.0f, 0.0f)

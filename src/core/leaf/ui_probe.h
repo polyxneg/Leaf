@@ -45,6 +45,13 @@ void OnDisplayTransfer(PAddr input, PAddr output, u32 input_size, u32 output_wid
 void SetHoldTopKeys(std::unordered_set<u64> keys);
 bool HoldBottom();
 
+/// Top-screen HUD textures (the game's clock plate) left out while the tool ring is open.
+void SetRingHiddenKeys(std::unordered_set<u64> keys);
+
+/// True when a draw with this texture is left out: while the tool ring is open, the clock plate
+/// and text (font sheets; the clock's digits and the date). `data` = the texture's pixels.
+bool SkipDraw(const u8* data, PAddr texture, u32 width, u32 height, u32 format);
+
 /// Called when the game swaps the bottom-screen framebuffer it displays.
 void OnBottomSwap(PAddr shown);
 

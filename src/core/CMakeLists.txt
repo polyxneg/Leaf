@@ -450,6 +450,7 @@ add_library(citra_core STATIC EXCLUDE_FROM_ALL
     hle/service/soc/soc_u.h
     hle/service/ssl/ssl_c.cpp
     hle/service/ssl/ssl_c.h
+    leaf/code_search.h
     leaf/debug_hooks.h
     leaf/leaf.cpp
     leaf/layout_patch.cpp
@@ -457,6 +458,8 @@ add_library(citra_core STATIC EXCLUDE_FROM_ALL
     leaf/leaf.h
     leaf/pocket_stacks.cpp
     leaf/pocket_stacks.h
+    leaf/tool_ring.cpp
+    leaf/tool_ring.h
     leaf/ui_patcher.cpp
     leaf/ui_patcher.h
     leaf/ui_probe.cpp

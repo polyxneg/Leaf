@@ -20,6 +20,8 @@
 //   save <file> / load <file>         savestates
 //   aspect <ratio>                    apply Leaf camera aspect (0 = native, e.g. 1.7778)
 //   autostack <0|1>                   Leaf auto-stack on pickup (LEAF_AUTOSTACK=1 at boot)
+//   ring / ringsel <slot>             list the tool ring / take out a slot (-1 = put away)
+//   ringopen <0|1>                    tool ring shown (HUD left out)
 //   w8 / w16 <addr> <value>           write a byte / halfword
 //   hexd <addr> <len>                 hex dump to stdout
 //   find <hexbytes> [max]             search all mapped process memory for a byte pattern
@@ -57,6 +59,7 @@
 #include "core/leaf/debug_hooks.h"
 #include "core/leaf/leaf.h"
 #include "core/leaf/pocket_stacks.h"
+#include "core/leaf/tool_ring.h"
 #include "core/leaf/ui_patcher.h"
 #include "core/leaf/ui_probe.h"
 #include "core/leaf/ui_scenes.h"
@@ -560,6 +563,21 @@ int main(int argc, char** argv) {
             Leaf::GetConfig().auto_stack = on != 0;
             Leaf::PocketStacks::Apply(system);
             std::printf("autostack %d (available %d)\n", on, Leaf::PocketStacks::Available());
+        } else if (cmd == "ring") {
+            const auto tools = Leaf::ToolRing::Tools();
+            std::printf("ring (available %d):", Leaf::ToolRing::Available());
+            for (const auto& t : tools)
+                std::printf(" [slot %d kind %02x variant %d icon %d]", t.slot, t.kind, t.variant,
+                            t.icon);
+            std::printf("\n");
+        } else if (cmd == "ringopen") {
+            int open = 0;
+            ss >> open;
+            Leaf::GetConfig().tool_ring_open = open != 0;
+        } else if (cmd == "ringsel") {
+            int slot = -1;
+            ss >> slot;
+            Leaf::ToolRing::Select(slot);
         } else if (cmd == "composite") {
             // composite <name> <width> <height> <mode: 0=16:9 1=4:3 2=5:3 3=fill>
             std::string name;

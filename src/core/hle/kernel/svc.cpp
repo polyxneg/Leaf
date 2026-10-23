@@ -39,6 +39,7 @@
 #include "core/hle/kernel/shared_page.h"
 #include "core/hle/kernel/svc.h"
 #include "core/leaf/pocket_stacks.h"
+#include "core/leaf/tool_ring.h"
 #include "core/hle/kernel/svc_wrapper.h"
 #include "core/hle/kernel/thread.h"
 #include "core/hle/kernel/timer.h"
@@ -2447,7 +2448,8 @@ void SVC::CallSVC(u32 immediate) {
     DEBUG_ASSERT_MSG(kernel.GetCurrentProcess()->status == ProcessStatus::Running,
                      "Running threads from exiting processes is unimplemented");
 
-    if (Leaf::PocketStacks::HandleSvc(system, immediate)) {
+    if (Leaf::PocketStacks::HandleSvc(system, immediate) ||
+        Leaf::ToolRing::HandleSvc(system, immediate)) {
         system.perf_stats->EndSVCProcessing();
         return;
     }

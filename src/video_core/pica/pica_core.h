@@ -147,7 +147,7 @@ private:
     void DrawImmediate();
 
     void DrawArrays(bool is_indexed);
-    void ProbeLeafDraw(int is_indexed = -1);
+    bool ProbeLeafDraw(int is_indexed = -1);
     bool LeafDrawBounds(bool is_indexed, std::array<float, 4>& bounds);
 
     void LoadVertices(bool is_indexed);

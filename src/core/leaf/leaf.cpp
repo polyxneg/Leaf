@@ -14,6 +14,7 @@
 #include "core/leaf/debug_hooks.h"
 #include "core/leaf/leaf.h"
 #include "core/leaf/pocket_stacks.h"
+#include "core/leaf/tool_ring.h"
 #include "core/leaf/ui_scenes.h"
 #include "core/memory.h"
 
@@ -128,6 +129,7 @@ bool IsActive() {
 void OnProgramLoaded(Core::System& system, u64 title_id, Kernel::Process& process) {
     g_camera_sites.clear();
     PocketStacks::Reset();
+    ToolRing::Reset();
     g_active = IsLeafTitle(title_id);
     g_title_id = title_id;
     g_config.layout_enabled = g_active.load();
@@ -138,11 +140,14 @@ void OnProgramLoaded(Core::System& system, u64 title_id, Kernel::Process& proces
     ApplyCameraAspect(system);
     PocketStacks::Locate(system, process);
     PocketStacks::Apply(system);
+    ToolRing::Locate(system, process);
+    ToolRing::Apply(system);
     Ui::Initialize(system.GetAppLoader());
 }
 
 void OnStateLoaded(Core::System& system) {
     PocketStacks::Apply(system);
+    ToolRing::Apply(system);
 }
 
 void ApplyCameraAspect(Core::System& system) {

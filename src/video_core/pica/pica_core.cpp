@@ -1096,9 +1096,10 @@ bool PicaCore::LeafDrawBounds(bool is_indexed, std::array<float, 4>& bounds) {
     return bounds[0] <= bounds[2];
 }
 
-void PicaCore::ProbeLeafDraw(int is_indexed) {
+/// Returns true when Leaf leaves the draw out (see Leaf::UiProbe::SkipDraw).
+bool PicaCore::ProbeLeafDraw(int is_indexed) {
     if (!Leaf::IsActive())
-        return;
+        return false;
     const PAddr target = regs.internal.framebuffer.framebuffer.GetColorBufferPhysicalAddress();
     if (leaf_before_draw && target >= leaf_before_draw_start && target < leaf_before_draw_end) {
         auto before = std::move(leaf_before_draw);
@@ -1110,16 +1111,21 @@ void PicaCore::ProbeLeafDraw(int is_indexed) {
     std::array<float, 4> bounds;
     const bool measured = textured && is_indexed >= 0 && Leaf::UiProbe::WantBounds() &&
                           LeafDrawBounds(is_indexed != 0, bounds);
+    const PAddr texture = texturing.texture0.GetPhysicalAddress();
+    const u32 format = static_cast<u32>(texturing.texture0_format.Value());
     Leaf::UiProbe::OnDraw(regs.internal.framebuffer.framebuffer.GetColorBufferPhysicalAddress(),
-                          textured, texturing.texture0.GetPhysicalAddress(),
-                          texturing.texture0.width, texturing.texture0.height,
-                          static_cast<u32>(texturing.texture0_format.Value()),
-                          measured ? &bounds : nullptr);
+                          textured, texture, texturing.texture0.width,
+                          texturing.texture0.height, format, measured ? &bounds : nullptr);
+    return textured && is_indexed >= 0 &&
+           Leaf::UiProbe::SkipDraw(memory.GetPhysicalPointer(texture), texture,
+                                   texturing.texture0.width, texturing.texture0.height, format);
 }
 
 void PicaCore::DrawArrays(bool is_indexed) {
     MICROPROFILE_SCOPE(GPU_Drawing);
-    ProbeLeafDraw(is_indexed ? 1 : 0);
+    if (ProbeLeafDraw(is_indexed ? 1 : 0)) {
+        return;
+    }
 
     // Track vertex in the debug recorder.
     if (debug_context) {

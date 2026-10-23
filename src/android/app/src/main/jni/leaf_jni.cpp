@@ -4,13 +4,17 @@
 
 // JNI bridge for org.citra.citra_emu.leaf.LeafNative (Animal Crossing: New Leaf integration).
 
+#include <algorithm>
 #include <memory>
+#include <string>
 #include <vector>
+#include <fmt/format.h>
 #include <jni.h>
 #include "core/core.h"
 #include "core/file_sys/romfs_reader.h"
 #include "core/leaf/layout_patch.h"
 #include "core/leaf/leaf.h"
+#include "core/leaf/tool_ring.h"
 #include "core/leaf/ui_scenes.h"
 #include "core/loader/loader.h"
 #include "video_core/texture/texture_decode.h"
@@ -28,6 +32,50 @@ void RefreshLayout() {
     if (system.IsPoweredOn()) {
         system.GPU().Renderer().UpdateCurrentFramebufferLayout(AndroidUtils::IsPortraitMode());
     }
+}
+
+/// An ETC1A4 image from a layout archive in the user's ROM as ARGB (top row first), or null.
+/// Most layout images are stored bottom-up; `flip` turns them the right way up.
+jintArray RomImage(JNIEnv* env, const char* archive, const std::string& path, bool flip) {
+    auto& system = Core::System::GetInstance();
+    if (!system.IsPoweredOn())
+        return nullptr;
+    std::shared_ptr<FileSys::RomFSReader> romfs;
+    if (system.GetAppLoader().ReadRomFS(romfs) != Loader::ResultStatus::Success || !romfs)
+        return nullptr;
+    namespace LP = Leaf::LayoutPatch;
+    const auto files = LP::ListRomFS(*romfs);
+    const auto arc_it = files.find(archive);
+    if (arc_it == files.end())
+        return nullptr;
+    const auto entries = LP::ReadArcEntries(LP::ReadRomFSFile(*romfs, arc_it->second));
+    for (const auto& entry : entries) {
+        if (entry.path != path)
+            continue;
+        const auto info = LP::ReadBclimInfo(entry.data.data(), static_cast<u32>(entry.data.size()));
+        if (!info || info->format != 11) // ETC1A4
+            return nullptr;
+        Pica::Texture::TextureInfo tex{};
+        tex.width = info->width;
+        tex.height = info->height;
+        tex.format = Pica::TexturingRegs::TextureFormat::ETC1A4;
+        tex.SetDefaultStride();
+        std::vector<jint> argb(static_cast<size_t>(info->width) * info->height);
+        for (u32 y = 0; y < info->height; y++) {
+            for (u32 x = 0; x < info->width; x++) {
+                const auto c = Pica::Texture::LookupTexture(
+                    entry.data.data(), x, flip ? info->height - 1 - y : y, tex);
+                argb[y * info->width + x] =
+                    static_cast<jint>((static_cast<u32>(c.a()) << 24) |
+                                      (static_cast<u32>(c.r()) << 16) |
+                                      (static_cast<u32>(c.g()) << 8) | c.b());
+            }
+        }
+        jintArray result = env->NewIntArray(static_cast<jsize>(argb.size()));
+        env->SetIntArrayRegion(result, 0, static_cast<jsize>(argb.size()), argb.data());
+        return result;
+    }
+    return nullptr;
 }
 
 } // namespace
@@ -166,46 +214,43 @@ JNIEXPORT jfloatArray JNICALL Java_org_citra_citra_1emu_leaf_LeafNative_bottomTo
 /// selects the variant with the finger pushed down.
 JNIEXPORT jintArray JNICALL Java_org_citra_citra_1emu_leaf_LeafNative_getHandCursor(
     JNIEnv* env, jobject, jboolean pressed) {
-    auto& system = Core::System::GetInstance();
-    if (!system.IsPoweredOn())
-        return nullptr;
-    std::shared_ptr<FileSys::RomFSReader> romfs;
-    if (system.GetAppLoader().ReadRomFS(romfs) != Loader::ResultStatus::Success || !romfs)
-        return nullptr;
-    namespace LP = Leaf::LayoutPatch;
-    const auto files = LP::ListRomFS(*romfs);
-    const auto arc_it = files.find("Layout/Cursor/crsl_hand.arc");
-    if (arc_it == files.end())
-        return nullptr;
-    const auto entries = LP::ReadArcEntries(LP::ReadRomFSFile(*romfs, arc_it->second));
-    for (const auto& entry : entries) {
-        if (entry.path != (pressed ? "timg/tc_crsl_hand_c.bclim" : "timg/tc_crsl_hand_po.bclim"))
-            continue;
-        const auto info = LP::ReadBclimInfo(entry.data.data(), static_cast<u32>(entry.data.size()));
-        if (!info || info->format != 11) // ETC1A4
-            return nullptr;
-        Pica::Texture::TextureInfo tex{};
-        tex.width = info->width;
-        tex.height = info->height;
-        tex.format = Pica::TexturingRegs::TextureFormat::ETC1A4;
-        tex.SetDefaultStride();
-        std::vector<jint> argb(static_cast<size_t>(info->width) * info->height);
-        for (u32 y = 0; y < info->height; y++) {
-            for (u32 x = 0; x < info->width; x++) {
-                // 3DS textures are stored bottom-up.
-                const auto c =
-                    Pica::Texture::LookupTexture(entry.data.data(), x, info->height - 1 - y, tex);
-                argb[y * info->width + x] =
-                    static_cast<jint>((static_cast<u32>(c.a()) << 24) |
-                                      (static_cast<u32>(c.r()) << 16) |
-                                      (static_cast<u32>(c.g()) << 8) | c.b());
-            }
-        }
-        jintArray result = env->NewIntArray(static_cast<jsize>(argb.size()));
-        env->SetIntArrayRegion(result, 0, static_cast<jsize>(argb.size()), argb.data());
-        return result;
+    return RomImage(env, "Layout/Cursor/crsl_hand.arc",
+                    pressed ? "timg/tc_crsl_hand_c.bclim" : "timg/tc_crsl_hand_po.bclim", true);
+}
+
+/// An item icon of the pockets screen (ItemWin/item_icon.arc icn_<index>) as 32x32 ARGB, or null.
+JNIEXPORT jintArray JNICALL Java_org_citra_citra_1emu_leaf_LeafNative_getItemIcon(
+    JNIEnv* env, jobject, jint index) {
+    return RomImage(env, "Layout/ItemWin/item_icon.arc",
+                    fmt::format("timg/icn_{:03d}.bclim", index), false);
+}
+
+/// The tool ring's tools as {slot, kind, variant, icon} each (slot -1 = in hand); empty while the
+/// ring can't be used (the player isn't standing still, or a menu is open).
+JNIEXPORT jintArray JNICALL Java_org_citra_citra_1emu_leaf_LeafNative_toolRing(JNIEnv* env,
+                                                                               jobject) {
+    std::vector<jint> values;
+    const auto scenes = Leaf::Ui::ActiveScenes();
+    if (std::all_of(scenes.begin(), scenes.end(),
+                    [](const std::string& id) { return id == "town_hud"; })) {
+        for (const auto& tool : Leaf::ToolRing::Tools())
+            values.insert(values.end(), {tool.slot, tool.kind, tool.variant, tool.icon});
     }
-    return nullptr;
+    jintArray result = env->NewIntArray(static_cast<jsize>(values.size()));
+    env->SetIntArrayRegion(result, 0, static_cast<jsize>(values.size()), values.data());
+    return result;
+}
+
+/// The tool ring is shown (the HUD is left out meanwhile).
+JNIEXPORT void JNICALL Java_org_citra_citra_1emu_leaf_LeafNative_setToolRingOpen(JNIEnv*, jobject,
+                                                                                jboolean open) {
+    Leaf::GetConfig().tool_ring_open = open;
+}
+
+/// Takes out the tool in pocket `slot`, or puts away the one in hand for -1.
+JNIEXPORT void JNICALL Java_org_citra_citra_1emu_leaf_LeafNative_selectTool(JNIEnv*, jobject,
+                                                                           jint slot) {
+    Leaf::ToolRing::Select(slot);
 }
 
 } // extern "C"

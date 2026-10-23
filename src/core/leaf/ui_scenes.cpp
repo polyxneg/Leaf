@@ -845,6 +845,14 @@ void Initialize(Loader::AppLoader& loader) {
             hold_keys.insert(key);
     }
     UiProbe::SetHoldTopKeys(std::move(hold_keys));
+    // The clock plate, left out while the tool ring is open.
+    std::unordered_set<u64> clock_keys;
+    for (const auto& [key, names] : names_by_key) {
+        if (std::all_of(names.begin(), names.end(),
+                        [](const auto* n) { return n->starts_with("Menu/time_bel_win.arc:"); }))
+            clock_keys.insert(key);
+    }
+    UiProbe::SetRingHiddenKeys(std::move(clock_keys));
     g_fallback.alpha = 0.0f;
     g_scenes.clear();
     for (auto& scene : BuildScenes()) {
@@ -1285,6 +1293,9 @@ std::vector<Layout::ScreenRegion> FrameRegions(const Layout::FramebufferLayout& 
                 want_bounds |= !keys.empty();
     }
     UiProbe::SetWantBounds(want_bounds);
+    // The tool ring takes the screen to itself: no HUD meanwhile.
+    if (GetConfig().tool_ring_open.load(std::memory_order_relaxed))
+        regions.clear();
     g_last_regions[(static_cast<u64>(layout.width) << 32) | layout.height] = regions;
     return regions;
 }
